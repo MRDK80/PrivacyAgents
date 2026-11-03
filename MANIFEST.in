@@ -9,3 +9,8 @@ exclude tests/test_schema_generation_type.py
 exclude docs/schemas/executor-report.schema.json
 exclude docs/schemas/controller-verdict.schema.json
 exclude docs/schemas/task-contract.schema.json
+exclude tests/test_schema_validate.py
+exclude examples/agent-contracts/task.json
+exclude examples/agent-contracts/executor-pass.json
+exclude examples/agent-contracts/controller-pass.json
+exclude examples/agent-contracts/controller-fail.json

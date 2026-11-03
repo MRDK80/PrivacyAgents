@@ -82,6 +82,11 @@ REPOSITORY_SOURCES = SOURCES | {
     "docs/schemas/executor-report.schema.json",
     "docs/schemas/controller-verdict.schema.json",
     "docs/schemas/task-contract.schema.json",
+    "tests/test_schema_validate.py",
+    "examples/agent-contracts/task.json",
+    "examples/agent-contracts/executor-pass.json",
+    "examples/agent-contracts/controller-pass.json",
+    "examples/agent-contracts/controller-fail.json",
 }
 
 

@@ -56,5 +56,32 @@
       "source": "https://github.com/MRDK80/privacy-gateway/blob/27c8d2b458712c44b54d5fedd2ca78c398b6246e/docs/schemas/task-contract.schema.json",
       "artifact_scope": "excluded from wheel/sdist; source tests only"
     }
+  ],
+  "repository_only_validator_fixtures": [
+    {
+      "path": "tests/test_schema_validate.py",
+      "source": "https://github.com/MRDK80/privacy-gateway/blob/27c8d2b458712c44b54d5fedd2ca78c398b6246e/tests/test_schema_validate.py",
+      "scope": "untrusted synthetic test input/source; excluded from wheel/sdist; not approval/evidence"
+    },
+    {
+      "path": "examples/agent-contracts/task.json",
+      "source": "https://github.com/MRDK80/privacy-gateway/blob/27c8d2b458712c44b54d5fedd2ca78c398b6246e/examples/agent-contracts/task.json",
+      "scope": "untrusted synthetic test input/source; excluded from wheel/sdist; not approval/evidence"
+    },
+    {
+      "path": "examples/agent-contracts/executor-pass.json",
+      "source": "https://github.com/MRDK80/privacy-gateway/blob/27c8d2b458712c44b54d5fedd2ca78c398b6246e/examples/agent-contracts/executor-pass.json",
+      "scope": "untrusted synthetic test input/source; excluded from wheel/sdist; not approval/evidence"
+    },
+    {
+      "path": "examples/agent-contracts/controller-pass.json",
+      "source": "https://github.com/MRDK80/privacy-gateway/blob/27c8d2b458712c44b54d5fedd2ca78c398b6246e/examples/agent-contracts/controller-pass.json",
+      "scope": "untrusted synthetic test input/source; excluded from wheel/sdist; not approval/evidence"
+    },
+    {
+      "path": "examples/agent-contracts/controller-fail.json",
+      "source": "https://github.com/MRDK80/privacy-gateway/blob/27c8d2b458712c44b54d5fedd2ca78c398b6246e/examples/agent-contracts/controller-fail.json",
+      "scope": "untrusted synthetic test input/source; excluded from wheel/sdist; not approval/evidence"
+    }
   ]
 }
