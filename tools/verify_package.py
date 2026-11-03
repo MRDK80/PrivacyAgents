@@ -87,6 +87,9 @@ REPOSITORY_SOURCES = SOURCES | {
     "examples/agent-contracts/executor-pass.json",
     "examples/agent-contracts/controller-pass.json",
     "examples/agent-contracts/controller-fail.json",
+    "docs/ADR-001-generic-binding.md",
+    "docs/BINDING_RECORDS.md",
+    "docs/BINDING_OPERATIONS.md",
 }
 
 
