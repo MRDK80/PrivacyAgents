@@ -13,8 +13,14 @@ from tools.binding_codec import (
     CodecError,
     _canonical_json,
     _strict_json,
+    canonical_host_admission,
+    canonical_install_approval,
     canonical_launch_approval,
+    host_admission_digest,
+    install_approval_digest,
     launch_approval_digest,
+    read_host_admission,
+    read_install_approval,
     read_launch_approval,
 )
 
@@ -260,3 +266,252 @@ def test_native_parser_limits_are_redacted_without_changing_them() -> None:
 def test_cap_has_no_implicit_default(operation: Callable[..., object]) -> None:
     with pytest.raises(TypeError):
         operation(EXPECTED)
+
+
+INSTALL_EXPECTED = (
+    b'{"action":"install-candidate","approved_at":2,"destination_digest":"sha256:'
+    + b"b" * 64 + b'","engine_manifest_digest":"sha256:' + b"a" * 64
+    + b'","expires_at":8,"not_before":1,"owner_identity":"fixture-owner",'
+    b'"revoked":false,"schema_id":"privacyagents.install-approval",'
+    b'"schema_version":"1.0"}'
+)
+HOST_EXPECTED = (
+    b'{"approved_at":2,"host_plan_digest":"sha256:' + b"c" * 64
+    + b'","owner_identity":"fixture-owner","probe_receipt_digest":"sha256:'
+    + b"d" * 64 + b'","schema_id":"privacyagents.host-admission",'
+    b'"schema_version":"1.0"}'
+)
+
+
+def leaf_record(family: str) -> dict[str, object]:
+    if family == "install":
+        return {
+            "schema_id": "privacyagents.install-approval",
+            "schema_version": "1.0",
+            "engine_manifest_digest": "sha256:" + "a" * 64,
+            "destination_digest": "sha256:" + "b" * 64,
+            "owner_identity": "fixture-owner", "approved_at": 2,
+            "not_before": 1, "expires_at": 8, "revoked": False,
+            "action": "install-candidate",
+        }
+    return {
+        "schema_id": "privacyagents.host-admission", "schema_version": "1.0",
+        "host_plan_digest": "sha256:" + "c" * 64,
+        "probe_receipt_digest": "sha256:" + "d" * 64,
+        "owner_identity": "fixture-owner", "approved_at": 2,
+    }
+
+
+def leaf_operations(family: str) -> tuple[
+    Callable[..., dict[str, object]], Callable[..., bytes], Callable[..., str]
+]:
+    if family == "install":
+        return (read_install_approval, canonical_install_approval,
+                install_approval_digest)
+    return (read_host_admission, canonical_host_admission, host_admission_digest)
+
+
+def reject_leaf(family: str, payload: bytes) -> None:
+    for operation in leaf_operations(family):
+        with pytest.raises(CodecError) as error:
+            operation(payload, byte_cap=len(payload) + 1)
+        assert str(error.value) == "Invalid binding record"
+        assert error.value.__context__ is None
+        assert error.value.__cause__ is None
+
+
+@pytest.mark.parametrize(("family", "expected"), [
+    ("install", INSTALL_EXPECTED), ("host", HOST_EXPECTED),
+])
+def test_two_leaf_independent_vectors(family: str, expected: bytes) -> None:
+    value = leaf_record(family)
+    payload = raw(value)
+    read, canonical, digest = leaf_operations(family)
+    assert read(payload, byte_cap=len(payload)) == value
+    assert canonical(payload, byte_cap=len(payload)) == expected
+    assert digest(payload, byte_cap=len(payload)) == (
+        "sha256:" + hashlib.sha256(expected).hexdigest()
+    )
+
+
+@pytest.mark.parametrize("family", ["install", "host"])
+def test_leaf_equivalent_json(family: str) -> None:
+    _, canonical, digest = leaf_operations(family)
+    expected = INSTALL_EXPECTED if family == "install" else HOST_EXPECTED
+    changed = dict(reversed(list(leaf_record(family).items())))
+    payload = b"\r\n" + raw(changed).replace(b"fixture-owner", b"fixture-\\u006fwner")
+    assert canonical(payload, byte_cap=len(payload)) == expected
+    assert digest(payload, byte_cap=len(payload)) == (
+        "sha256:" + hashlib.sha256(expected).hexdigest()
+    )
+
+
+@pytest.mark.parametrize(("family", "field"), [
+    ("install", field) for field in (
+        "schema_id", "schema_version", "engine_manifest_digest", "destination_digest",
+        "owner_identity", "approved_at", "not_before", "expires_at",
+        "revoked", "action",
+    )
+] + [
+    ("host", field) for field in (
+        "schema_id", "schema_version", "host_plan_digest", "probe_receipt_digest",
+        "owner_identity", "approved_at",
+    )
+])
+def test_leaf_missing_required_key(family: str, field: str) -> None:
+    changed = leaf_record(family)
+    del changed[field]
+    reject_leaf(family, raw(changed))
+
+
+@pytest.mark.parametrize("family", ["install", "host"])
+@pytest.mark.parametrize("field", ["extra", "self_digest"])
+def test_leaf_extra_key(family: str, field: str) -> None:
+    changed = leaf_record(family)
+    changed[field] = "synthetic-invalid-marker"
+    reject_leaf(family, raw(changed))
+
+
+@pytest.mark.parametrize("field", ["not_before", "expires_at", "revoked", "action"])
+def test_host_is_not_an_install_approval_union(field: str) -> None:
+    changed = leaf_record("host")
+    changed[field] = leaf_record("install")[field]
+    reject_leaf("host", raw(changed))
+
+
+@pytest.mark.parametrize("family", ["install", "host"])
+@pytest.mark.parametrize(("field", "value"), [
+    ("schema_id", "privacyagents.activation"), ("schema_id", "unknown-family"),
+    ("schema_id", None), ("schema_version", "2.0"),
+    ("schema_version", True), ("schema_version", 1), ("schema_version", None),
+    ("owner_identity", None), ("owner_identity", 1),
+    ("owner_identity", "non-ascii-\u00e9"), ("owner_identity", "nul\0owner"),
+])
+def test_leaf_fixed_tags_and_owner(family: str, field: str, value: object) -> None:
+    changed = leaf_record(family)
+    changed[field] = value
+    reject_leaf(family, raw(changed))
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("action", "launch-bound-synthetic-run"), ("action", None),
+    ("action", True), ("action", 1),
+    ("revoked", 0), ("revoked", 1), ("revoked", None), ("revoked", "false"),
+])
+def test_install_action_and_exact_boolean(field: str, value: object) -> None:
+    changed = leaf_record("install")
+    changed[field] = value
+    reject_leaf("install", raw(changed))
+
+
+@pytest.mark.parametrize(("family", "field"), [
+    ("install", "engine_manifest_digest"), ("install", "destination_digest"),
+    ("host", "host_plan_digest"), ("host", "probe_receipt_digest"),
+])
+@pytest.mark.parametrize("value", [
+    "a" * 64, "sha256:" + "a" * 63, "sha256:" + "a" * 65,
+    "sha256:" + "A" * 64, "sha256:" + "g" * 64,
+    "sha512:" + "a" * 64, None, 0,
+])
+def test_leaf_digest_fields(family: str, field: str, value: object) -> None:
+    changed = leaf_record(family)
+    changed[field] = value
+    reject_leaf(family, raw(changed))
+
+
+@pytest.mark.parametrize(("family", "field"), [
+    ("install", "approved_at"), ("install", "not_before"),
+    ("install", "expires_at"), ("host", "approved_at"),
+])
+@pytest.mark.parametrize("value", [-1, 1.0, True, False, None, "1"])
+def test_leaf_timestamp_fields(family: str, field: str, value: object) -> None:
+    changed = leaf_record(family)
+    changed[field] = value
+    reject_leaf(family, raw(changed))
+
+
+@pytest.mark.parametrize("family", ["install", "host"])
+@pytest.mark.parametrize("owner", ["", "  owner  ", "MiXeD", "owner/name"])
+def test_leaf_owner_has_no_added_syntax(family: str, owner: str) -> None:
+    changed = leaf_record(family)
+    changed["owner_identity"] = owner
+    payload = raw(changed)
+    read, _, _ = leaf_operations(family)
+    assert read(payload, byte_cap=len(payload))["owner_identity"] == owner
+
+
+@pytest.mark.parametrize(("family", "field", "value"), [
+    ("install", "engine_manifest_digest", "sha256:" + "e" * 64),
+    ("install", "destination_digest", "sha256:" + "e" * 64),
+    ("install", "owner_identity", "another-owner"),
+    ("install", "approved_at", 3), ("install", "not_before", 0),
+    ("install", "expires_at", 9), ("install", "revoked", True),
+    ("host", "host_plan_digest", "sha256:" + "e" * 64),
+    ("host", "probe_receipt_digest", "sha256:" + "e" * 64),
+    ("host", "owner_identity", "another-owner"), ("host", "approved_at", 3),
+])
+def test_all_leaf_variable_fields_participate(family: str, field: str,
+                                             value: object) -> None:
+    changed = leaf_record(family)
+    changed[field] = value
+    payload = raw(changed)
+    _, canonical, digest = leaf_operations(family)
+    expected = INSTALL_EXPECTED if family == "install" else HOST_EXPECTED
+    assert canonical(payload, byte_cap=len(payload)) != expected
+    assert digest(payload, byte_cap=len(payload)) != (
+        "sha256:" + hashlib.sha256(expected).hexdigest()
+    )
+
+
+@pytest.mark.parametrize("family", ["install", "host"])
+@pytest.mark.parametrize("duplicate", [
+    b',"approved_at":2}', b',"approved_at":3}', b',"appr\\u006fved_at":3}',
+])
+def test_leaf_duplicate_known_field(family: str, duplicate: bytes) -> None:
+    expected = INSTALL_EXPECTED if family == "install" else HOST_EXPECTED
+    reject_leaf(family, expected[:-1] + duplicate)
+
+
+@pytest.mark.parametrize(("expected_family", "payload_family"), [
+    ("install", "host"), ("host", "install"),
+    ("install", "launch"), ("host", "launch"),
+    ("launch", "install"), ("launch", "host"),
+])
+def test_expected_family_is_never_inferred_from_payload(expected_family: str,
+                                                       payload_family: str) -> None:
+    value = record() if payload_family == "launch" else leaf_record(payload_family)
+    payload = raw(value)
+    if expected_family == "launch":
+        reject(payload)
+    else:
+        reject_leaf(expected_family, payload)
+
+
+@pytest.mark.parametrize("family", ["install", "host"])
+def test_leaf_structure_does_not_validate_context(family: str) -> None:
+    changed = leaf_record(family)
+    changed["owner_identity"] = "untrusted-fixture"
+    changed["approved_at"] = 99
+    if family == "install":
+        changed.update(not_before=100, expires_at=0, revoked=True)
+    payload = raw(changed)
+    read, _, _ = leaf_operations(family)
+    assert read(payload, byte_cap=len(payload)) == changed
+
+
+@pytest.mark.parametrize("family", ["install", "host"])
+@pytest.mark.parametrize("payload", [b"null", b"[]", b"0", b'"string"'])
+def test_leaf_requires_object(family: str, payload: bytes) -> None:
+    reject_leaf(family, payload)
+
+
+@pytest.mark.parametrize("family", ["install", "host"])
+def test_leaf_entries_require_explicit_valid_bytecap(family: str) -> None:
+    payload = raw(leaf_record(family))
+    for operation in leaf_operations(family):
+        with pytest.raises(TypeError):
+            operation(payload)
+        with pytest.raises(CodecError):
+            operation(payload, byte_cap=False)
+        with pytest.raises(CodecError):
+            operation(payload, byte_cap=len(payload) - 1)

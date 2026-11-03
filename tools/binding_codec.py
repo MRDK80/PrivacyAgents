@@ -1,8 +1,8 @@
-"""Repository-only structural LA1.0 codec, never a permission or lifecycle check.
+"""Repository-only structural approval codecs, never permission/lifecycle checks.
 
 A returned record or digest does not authenticate its owner, resolve its source,
-validate a time window, or authorize any effect. Other record families are not
-supported here. No filesystem, clock or runtime consumer is involved.
+validate a time window, or authorize any effect. Only the named LA/IA/HA1.0
+entry paths are supported. No filesystem, clock or runtime consumer is involved.
 """
 
 from __future__ import annotations
@@ -139,4 +139,80 @@ def launch_approval_digest(payload: bytes, *, byte_cap: int) -> str:
     """Hash all structural LA fields; the digest confers no authority or readiness."""
     return "sha256:" + hashlib.sha256(
         canonical_launch_approval(payload, byte_cap=byte_cap)
+    ).hexdigest()
+
+
+def _approval_leaf(
+    value: object, *, family: str, digest_fields: tuple[str, ...], window: bool
+) -> dict[str, object]:
+    """Shared shape checks for the two explicitly selected new leaf entry paths."""
+    if type(value) is not dict:
+        raise CodecError()
+    record = cast(dict[str, object], value)
+    fields = {"schema_id", "schema_version", "owner_identity", "approved_at"}
+    fields.update(digest_fields)
+    if window:
+        fields.update({"not_before", "expires_at", "revoked", "action"})
+    if record.keys() != fields:
+        raise CodecError()
+    if record["schema_id"] != family or record["schema_version"] != "1.0":
+        raise CodecError()
+    for field in digest_fields:
+        digest = record[field]
+        if not isinstance(digest, str) or _DIGEST.fullmatch(digest) is None:
+            raise CodecError()
+    owner = record["owner_identity"]
+    if not isinstance(owner, str) or not owner.isascii():
+        raise CodecError()
+    timestamps = ("approved_at", "not_before", "expires_at") if window else (
+        "approved_at",
+    )
+    for field in timestamps:
+        timestamp = record[field]
+        if type(timestamp) is not int or timestamp < 0:
+            raise CodecError()
+    if window and (
+        type(record["revoked"]) is not bool or record["action"] != "install-candidate"
+    ):
+        raise CodecError()
+    return record
+
+
+def read_install_approval(payload: bytes, *, byte_cap: int) -> dict[str, object]:
+    """Decode structural IA1.0 only; no source/window or install permission check."""
+    return _approval_leaf(
+        _strict_json(payload, byte_cap), family="privacyagents.install-approval",
+        digest_fields=("engine_manifest_digest", "destination_digest"), window=True,
+    )
+
+
+def canonical_install_approval(payload: bytes, *, byte_cap: int) -> bytes:
+    """Encode all ten checked IA fields without normalization or exclusions."""
+    return _canonical_json(read_install_approval(payload, byte_cap=byte_cap))
+
+
+def install_approval_digest(payload: bytes, *, byte_cap: int) -> str:
+    """Hash structural IA fields; this digest does not approve installation."""
+    return "sha256:" + hashlib.sha256(
+        canonical_install_approval(payload, byte_cap=byte_cap)
+    ).hexdigest()
+
+
+def read_host_admission(payload: bytes, *, byte_cap: int) -> dict[str, object]:
+    """Decode structural HA1.0 only; no actual host probe or admission is performed."""
+    return _approval_leaf(
+        _strict_json(payload, byte_cap), family="privacyagents.host-admission",
+        digest_fields=("host_plan_digest", "probe_receipt_digest"), window=False,
+    )
+
+
+def canonical_host_admission(payload: bytes, *, byte_cap: int) -> bytes:
+    """Encode all six checked HA fields without normalization or exclusions."""
+    return _canonical_json(read_host_admission(payload, byte_cap=byte_cap))
+
+
+def host_admission_digest(payload: bytes, *, byte_cap: int) -> str:
+    """Hash structural HA fields; this digest does not prove host capability."""
+    return "sha256:" + hashlib.sha256(
+        canonical_host_admission(payload, byte_cap=byte_cap)
     ).hexdigest()
