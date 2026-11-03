@@ -17,3 +17,5 @@ exclude examples/agent-contracts/controller-fail.json
 exclude docs/ADR-001-generic-binding.md
 exclude docs/BINDING_RECORDS.md
 exclude docs/BINDING_OPERATIONS.md
+exclude tools/binding_codec.py
+exclude tests/test_binding_codec.py

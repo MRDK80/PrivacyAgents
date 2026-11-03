@@ -183,7 +183,7 @@ def test_snapshot_omits_untracked_private_marker(tmp_path: Path) -> None:
     verifier().snapshot_tracked(source, target)
     assert not (target / ".agent-private").exists()
     assert (target / "tests/test_schema_generation_type.py").is_file()
-    assert len([p for p in target.rglob("*") if p.is_file()]) == 36
+    assert len([p for p in target.rglob("*") if p.is_file()]) == 38
 
 
 def test_snapshot_rejects_symlink_index_mode_before_copy(tmp_path: Path) -> None:
