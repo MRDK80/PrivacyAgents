@@ -14,3 +14,6 @@ exclude examples/agent-contracts/task.json
 exclude examples/agent-contracts/executor-pass.json
 exclude examples/agent-contracts/controller-pass.json
 exclude examples/agent-contracts/controller-fail.json
+exclude docs/ADR-001-generic-binding.md
+exclude docs/BINDING_RECORDS.md
+exclude docs/BINDING_OPERATIONS.md
