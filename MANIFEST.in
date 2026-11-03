@@ -2,3 +2,10 @@ include LICENSE README.md pyproject.toml PROVENANCE.json
 include src/privacy_agents/__init__.py src/privacy_agents/cli.py src/privacy_agents/py.typed
 include tools/verify_package.py tests/test_package.py
 include src/privacy_agents/PROVENANCE.json
+exclude tools/__init__.py
+exclude tools/schema_validate.py
+exclude tests/__init__.py
+exclude tests/test_schema_generation_type.py
+exclude docs/schemas/executor-report.schema.json
+exclude docs/schemas/controller-verdict.schema.json
+exclude docs/schemas/task-contract.schema.json

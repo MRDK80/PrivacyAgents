@@ -1,6 +1,6 @@
 {
   "project": "MRDK80/PrivacyAgents",
-  "stage": "E2 package candidate; engine not transferred",
+  "stage": "Metadata-only distribution; repository-only schema-generation foundation is not installed or activated",
   "design": {
     "repository": "MRDK80/privacy-gateway",
     "commit": "https://github.com/MRDK80/privacy-gateway/commit/7fd70c15a41125e07c856e03515a0c47a66577f2",
@@ -19,5 +19,42 @@
       "mode": "100644"
     }
   ],
-  "authority": "Provenance describes origin; it is not installation or run approval."
+  "authority": "Provenance describes origin; it is not installation or run approval.",
+  "repository_only_foundation": [
+    {
+      "path": "tools/__init__.py",
+      "source": "https://github.com/MRDK80/privacy-gateway/blob/27c8d2b458712c44b54d5fedd2ca78c398b6246e/tools/__init__.py",
+      "artifact_scope": "excluded from wheel/sdist; source tests only"
+    },
+    {
+      "path": "tools/schema_validate.py",
+      "source": "https://github.com/MRDK80/privacy-gateway/blob/27c8d2b458712c44b54d5fedd2ca78c398b6246e/tools/schema_validate.py",
+      "artifact_scope": "excluded from wheel/sdist; source tests only"
+    },
+    {
+      "path": "tests/__init__.py",
+      "source": "https://github.com/MRDK80/privacy-gateway/blob/27c8d2b458712c44b54d5fedd2ca78c398b6246e/tests/__init__.py",
+      "artifact_scope": "excluded from wheel/sdist; source tests only"
+    },
+    {
+      "path": "tests/test_schema_generation_type.py",
+      "source": "https://github.com/MRDK80/privacy-gateway/blob/27c8d2b458712c44b54d5fedd2ca78c398b6246e/tests/test_schema_generation_type.py",
+      "artifact_scope": "excluded from wheel/sdist; source tests only"
+    },
+    {
+      "path": "docs/schemas/executor-report.schema.json",
+      "source": "https://github.com/MRDK80/privacy-gateway/blob/27c8d2b458712c44b54d5fedd2ca78c398b6246e/docs/schemas/executor-report.schema.json",
+      "artifact_scope": "excluded from wheel/sdist; source tests only"
+    },
+    {
+      "path": "docs/schemas/controller-verdict.schema.json",
+      "source": "https://github.com/MRDK80/privacy-gateway/blob/27c8d2b458712c44b54d5fedd2ca78c398b6246e/docs/schemas/controller-verdict.schema.json",
+      "artifact_scope": "excluded from wheel/sdist; source tests only"
+    },
+    {
+      "path": "docs/schemas/task-contract.schema.json",
+      "source": "https://github.com/MRDK80/privacy-gateway/blob/27c8d2b458712c44b54d5fedd2ca78c398b6246e/docs/schemas/task-contract.schema.json",
+      "artifact_scope": "excluded from wheel/sdist; source tests only"
+    }
+  ]
 }

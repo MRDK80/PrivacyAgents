@@ -41,6 +41,7 @@ privacy_agents = ["py.typed", "PROVENANCE.json"]
 testpaths = ["tests"]
 
 [tool.ruff]
+src = ["src", "tests"]
 target-version = "py311"
 line-length = 88
 

@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -61,6 +62,69 @@ SDIST |= {
         "top_level.txt",
     )
 }
+
+
+REPOSITORY_SOURCES = SOURCES | {
+    ".github/CODEOWNERS",
+    ".github/pull_request_template.md",
+    ".github/workflows/pre-commit.yml",
+    ".github/workflows/tests.yml",
+    ".gitignore",
+    ".pre-commit-config.yaml",
+    "AGENTS.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "docs/ARCHITECTURE.md",
+    "tools/__init__.py",
+    "tools/schema_validate.py",
+    "tests/__init__.py",
+    "tests/test_schema_generation_type.py",
+    "docs/schemas/executor-report.schema.json",
+    "docs/schemas/controller-verdict.schema.json",
+    "docs/schemas/task-contract.schema.json",
+}
+
+
+def snapshot_tracked(source: Path, destination: Path) -> None:
+    """Copy the closed whole tracked Git checkout; never discover private files."""
+    if source.is_symlink() or source.resolve() != source.absolute():
+        raise ValueError("Non-canonical repository root")
+    root = subprocess.check_output(
+        ["git", "rev-parse", "--show-toplevel"], cwd=source, text=True
+    ).strip()
+    if Path(root).resolve() != source:
+        raise ValueError("Git checkout root required")
+    records = (
+        subprocess.check_output(["git", "ls-files", "--stage", "-z"], cwd=source)
+        .decode("utf-8")
+        .split("\0")
+    )
+    names: list[str] = []
+    for record in records:
+        if not record:
+            continue
+        header, name = record.split("\t", 1)
+        mode, _blob, stage = header.split()
+        if mode != "100644" or stage != "0":
+            raise ValueError("Non-regular or unmerged index entry")
+        names.append(name)
+    inventory(names, REPOSITORY_SOURCES)
+    # Validate ALL paths and ancestors before copying even the first byte.
+    for name in names:
+        current = source
+        for part in PurePosixPath(name).parts:
+            current = current / part
+            if current.is_symlink() or current.resolve() != current.absolute():
+                raise ValueError("Symlink or escaping source path")
+            if current != source / name and not current.is_dir():
+                raise ValueError("Non-directory source ancestor")
+        if not stat.S_ISREG(current.stat().st_mode):
+            raise ValueError("Non-regular source member")
+    destination.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        target = destination / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source / name, target)
 
 
 def inventory(names: list[str], expected: set[str]) -> None:
@@ -149,15 +213,9 @@ def verify(source: Path, temporary: Path) -> dict[str, object]:
     for attempt in range(2):
         root = temporary / str(attempt)
         copy, out, unpacked = root / "source", root / "artifacts", root / "unpacked"
-        for folder in (copy, out, unpacked):
+        for folder in (out, unpacked):
             folder.mkdir(parents=True)
-        for name in SOURCES:
-            original = source / name
-            if original.is_symlink() or not original.is_file():
-                raise ValueError("Invalid source member")
-            destination = copy / name
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(original, destination)
+        snapshot_tracked(source, copy)
         run(
             [
                 sys.executable,
