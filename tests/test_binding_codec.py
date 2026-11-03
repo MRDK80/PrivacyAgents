@@ -1,0 +1,262 @@
+"""Structural codec vectors; no fixture represents authority to launch."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import sys
+from collections.abc import Callable
+from typing import cast
+
+import pytest
+from tools.binding_codec import (
+    CodecError,
+    _canonical_json,
+    _strict_json,
+    canonical_launch_approval,
+    launch_approval_digest,
+    read_launch_approval,
+)
+
+EXPECTED = (
+    b'{"action":"launch-bound-synthetic-run","approved_at":2,'
+    b'"binding_intent_digest":"sha256:' + b"a" * 64
+    + b'","expires_at":8,"not_before":1,"owner_identity":"fixture-owner",'
+    b'"revoked":false,"schema_id":"privacyagents.launch-approval",'
+    b'"schema_version":"1.0"}'
+)
+FIELDS = (
+    "action", "approved_at", "binding_intent_digest", "expires_at", "not_before",
+    "owner_identity", "revoked", "schema_id", "schema_version",
+)
+
+
+def record() -> dict[str, object]:
+    return {
+        "schema_id": "privacyagents.launch-approval",
+        "schema_version": "1.0",
+        "binding_intent_digest": "sha256:" + "a" * 64,
+        "owner_identity": "fixture-owner",
+        "approved_at": 2,
+        "not_before": 1,
+        "expires_at": 8,
+        "revoked": False,
+        "action": "launch-bound-synthetic-run",
+    }
+
+
+def raw(value: object) -> bytes:
+    return json.dumps(value).encode("utf-8")
+
+
+def reject(payload: bytes) -> None:
+    for operation in (read_launch_approval, canonical_launch_approval,
+                      launch_approval_digest):
+        with pytest.raises(CodecError) as error:
+            operation(payload, byte_cap=len(payload) + 1)
+        assert str(error.value) == "Invalid binding record"
+        assert repr(error.value) == "CodecError('Invalid binding record')"
+        assert error.value.__context__ is None
+        assert error.value.__cause__ is None
+
+
+def test_independent_canonical_vector() -> None:
+    payload = raw(record())
+    assert read_launch_approval(payload, byte_cap=len(payload)) == record()
+    assert canonical_launch_approval(payload, byte_cap=len(payload)) == EXPECTED
+    assert launch_approval_digest(payload, byte_cap=len(payload)) == (
+        "sha256:" + hashlib.sha256(EXPECTED).hexdigest()
+    )
+
+
+@pytest.mark.parametrize("payload", [
+    EXPECTED,
+    b"\r\n  " + EXPECTED + b"\r\n",
+    raw(dict(reversed(list(record().items())))),
+    raw(record()).replace(b"fixture-owner", b"fixture-\\u006fwner"),
+])
+def test_equivalent_json_has_same_semantic_digest(payload: bytes) -> None:
+    assert canonical_launch_approval(payload, byte_cap=len(payload)) == EXPECTED
+    assert launch_approval_digest(payload, byte_cap=len(payload)) == (
+        "sha256:" + hashlib.sha256(EXPECTED).hexdigest()
+    )
+
+
+@pytest.mark.parametrize("field", FIELDS)
+def test_missing_field(field: str) -> None:
+    value = record()
+    del value[field]
+    reject(raw(value))
+
+
+@pytest.mark.parametrize("field", ["extra", "self_digest", "launch_approval_digest"])
+def test_unknown_field(field: str) -> None:
+    value = record()
+    value[field] = "synthetic-invalid-marker"
+    reject(raw(value))
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("schema_id", "privacyagents.activation"),
+    ("schema_id", "unknown-family"), ("schema_id", None),
+    ("schema_version", "2.0"), ("schema_version", 1),
+    ("schema_version", True), ("action", "other-action"),
+    ("action", 1), ("action", True),
+])
+def test_fixed_tags(field: str, value: object) -> None:
+    changed = record()
+    changed[field] = value
+    reject(raw(changed))
+
+
+@pytest.mark.parametrize("value", [
+    "a" * 64, "sha256:" + "a" * 63, "sha256:" + "a" * 65,
+    "sha256:" + "A" * 64, "sha256:" + "g" * 64,
+    "sha512:" + "a" * 64, 0, None, True,
+])
+def test_digest_shape(value: object) -> None:
+    changed = record()
+    changed["binding_intent_digest"] = value
+    reject(raw(changed))
+
+
+@pytest.mark.parametrize("field", ["approved_at", "not_before", "expires_at"])
+@pytest.mark.parametrize("value", [-1, 1.0, True, False, None, "1"])
+def test_integer_fields(field: str, value: object) -> None:
+    changed = record()
+    changed[field] = value
+    reject(raw(changed))
+
+
+@pytest.mark.parametrize("value", [0, 1, "false", None, []])
+def test_exact_boolean(value: object) -> None:
+    changed = record()
+    changed["revoked"] = value
+    reject(raw(changed))
+
+
+@pytest.mark.parametrize("value", [0, None, True, "non-ascii-\u00e9", "nul\0owner"])
+def test_owner_type_and_encoding(value: object) -> None:
+    changed = record()
+    changed["owner_identity"] = value
+    reject(raw(changed))
+
+
+@pytest.mark.parametrize("owner", ["", "  owner  ", "MiXeD", "owner/name"])
+def test_ascii_owner_is_preserved_without_invented_syntax(owner: str) -> None:
+    changed = record()
+    changed["owner_identity"] = owner
+    payload = raw(changed)
+    decoded = read_launch_approval(payload, byte_cap=len(payload))
+    assert decoded["owner_identity"] == owner
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("binding_intent_digest", "sha256:" + "b" * 64),
+    ("owner_identity", "another-owner"), ("approved_at", 3),
+    ("not_before", 0), ("expires_at", 9), ("revoked", True),
+])
+def test_every_variable_field_participates_in_digest(field: str, value: object) -> None:
+    changed = record()
+    changed[field] = value
+    payload = raw(changed)
+    encoded = canonical_launch_approval(payload, byte_cap=len(payload))
+    assert encoded != EXPECTED
+    assert launch_approval_digest(payload, byte_cap=len(payload)) != (
+        "sha256:" + hashlib.sha256(EXPECTED).hexdigest()
+    )
+
+
+def test_structural_result_does_not_enforce_lifecycle_or_owner_authority() -> None:
+    changed = record()
+    changed.update(revoked=True, approved_at=99, not_before=100, expires_at=0,
+                   owner_identity="untrusted-fixture")
+    payload = raw(changed)
+    assert read_launch_approval(payload, byte_cap=len(payload)) == changed
+
+
+@pytest.mark.parametrize("payload", [
+    b"null", b"[]", b"1", b'"synthetic-invalid-marker"', b"true",
+    b"\xffsynthetic-invalid-marker", b'{"synthetic-invalid-marker":',
+    EXPECTED + b" trailing", b'{"x":1,"x":1}', b'{"x":1,"x":2}',
+    b'{"x":1,"\\u0078":2}', b'{"nested":{"x":1,"x":2}}',
+    b'{"nested":[{"x":1,"x":2}]}', b'{"x":1.5}', b'{"x":1e2}',
+    b'{"x":NaN}', b'{"x":Infinity}', b'{"x":-Infinity}',
+    b'{"nested":[0.5]}', b'{"nul\\u0000key":1}', b'{"x":"nul\\u0000"}',
+    b'{"x":"\\ud800"}', b'{"\\udfff":1}',
+])
+def test_strict_json_and_safe_errors(payload: bytes) -> None:
+    reject(payload)
+
+
+@pytest.mark.parametrize("duplicate", [
+    b',"approved_at":2}',
+    b',"approved_at":3}',
+    b',"appr\\u006fved_at":3}',
+])
+def test_duplicate_known_fields_in_supported_family(duplicate: bytes) -> None:
+    # Without duplicate rejection each vector would retain a valid LA shape.
+    reject(EXPECTED[:-1] + duplicate)
+
+
+@pytest.mark.parametrize("payload", [
+    b'{"nested":{"x":1,"x":1}}',
+    b'{"nested":[{"x":1,"x":2}]}',
+    b'{"x":1,"\\u0078":2}',
+    b"1.5", b"1e2", b"NaN", b"Infinity", b"-Infinity",
+    b'{"nested":[0.5]}', b'{"nested":{"x":1e2}}',
+    b'{"nested":[NaN]}', b'{"nested":{"x":Infinity}}',
+    b'{"nul\\u0000key":1}', b'{"x":"nul\\u0000"}',
+    b'{"x":"\\ud800"}', b'{"\\udfff":1}',
+])
+def test_parser_rejections_independent_of_record_shape(payload: bytes) -> None:
+    # The plain JSON layer accepts objects/lists/scalars; LA shape cannot mask
+    # disabled duplicate, number or Unicode checks in these parser vectors.
+    with pytest.raises(CodecError) as error:
+        _strict_json(payload, len(payload))
+    assert str(error.value) == "Invalid binding record"
+    assert error.value.__context__ is None
+    assert error.value.__cause__ is None
+
+
+def test_private_parser_accepts_plain_nested_json_without_la_shape() -> None:
+    payload = b'{"nested":[{"x":1},"text",true,null]}'
+    assert _strict_json(payload, len(payload)) == {
+        "nested": [{"x": 1}, "text", True, None]
+    }
+
+
+@pytest.mark.parametrize("cap", [True, False, 0, -1, None, "1000", 1.5])
+def test_invalid_cap(cap: object) -> None:
+    with pytest.raises(CodecError):
+        read_launch_approval(EXPECTED, byte_cap=cast(int, cap))
+
+
+def test_bytecap_is_enforced_before_parsing() -> None:
+    with pytest.raises(CodecError):
+        read_launch_approval(EXPECTED, byte_cap=len(EXPECTED) - 1)
+    with pytest.raises(CodecError):
+        read_launch_approval(cast(bytes, "not-bytes"), byte_cap=100)
+
+
+def test_private_canonical_encoding_preserves_unicode_and_string_whitespace() -> None:
+    assert _canonical_json({"x": " \u00e9 "}) == b'{"x":" \xc3\xa9 "}'
+    assert _canonical_json({"x": "e\u0301"}) == b'{"x":"e\xcc\x81"}'
+    assert _canonical_json({"x": "\u00e9"}) != _canonical_json({"x": "e\u0301"})
+
+
+def test_native_parser_limits_are_redacted_without_changing_them() -> None:
+    recursion_limit = sys.getrecursionlimit()
+    integer_limit = sys.get_int_max_str_digits()
+    reject(b"[" * (recursion_limit + 1) + b"0" + b"]" * (recursion_limit + 1))
+    if integer_limit:
+        reject(b'{"synthetic-invalid-marker":' + b"1" * (integer_limit + 1) + b"}")
+    assert sys.getrecursionlimit() == recursion_limit
+    assert sys.get_int_max_str_digits() == integer_limit
+
+
+@pytest.mark.parametrize("operation", [read_launch_approval, canonical_launch_approval,
+                                       launch_approval_digest])
+def test_cap_has_no_implicit_default(operation: Callable[..., object]) -> None:
+    with pytest.raises(TypeError):
+        operation(EXPECTED)

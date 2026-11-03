@@ -90,6 +90,8 @@ REPOSITORY_SOURCES = SOURCES | {
     "docs/ADR-001-generic-binding.md",
     "docs/BINDING_RECORDS.md",
     "docs/BINDING_OPERATIONS.md",
+    "tools/binding_codec.py",
+    "tests/test_binding_codec.py",
 }
 
 
