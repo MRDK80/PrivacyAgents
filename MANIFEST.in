@@ -1,0 +1,4 @@
+include LICENSE README.md pyproject.toml PROVENANCE.json
+include src/privacy_agents/__init__.py src/privacy_agents/cli.py src/privacy_agents/py.typed
+include tools/verify_package.py tests/test_package.py
+include src/privacy_agents/PROVENANCE.json

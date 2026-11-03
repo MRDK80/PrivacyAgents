@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=77.0.3", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "privacy-agents"
+dynamic = ["version"]
+description = "Development orchestration package candidate"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6", "mypy>=1.11", "pre-commit>=3.7", "detect-secrets>=1.5", "wheel", "setuptools>=77.0.3"]
+
+[project.scripts]
+privacy-agents = "privacy_agents.cli:main"
+
+[project.urls]
+Repository = "https://github.com/MRDK80/PrivacyAgents"
+
+[tool.setuptools.dynamic]
+version = {attr = "privacy_agents.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["privacy_agents"]
+namespaces = false
+
+[tool.setuptools.package-data]
+privacy_agents = ["py.typed", "PROVENANCE.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+mypy_path = "src"
