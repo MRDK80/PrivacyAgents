@@ -1,0 +1,23 @@
+{
+  "project": "MRDK80/PrivacyAgents",
+  "stage": "E2 package candidate; engine not transferred",
+  "design": {
+    "repository": "MRDK80/privacy-gateway",
+    "commit": "https://github.com/MRDK80/privacy-gateway/commit/7fd70c15a41125e07c856e03515a0c47a66577f2",
+    "adr": "docs/ADR-392-privacyagents-extraction-boundary.md"
+  },
+  "analysis_source": {
+    "repository": "MRDK80/privacy-gateway",
+    "commit": "https://github.com/MRDK80/privacy-gateway/commit/27c8d2b458712c44b54d5fedd2ca78c398b6246e",
+    "tree": "https://github.com/MRDK80/privacy-gateway/tree/27c8d2b458712c44b54d5fedd2ca78c398b6246e",
+    "tree_object": "https://api.github.com/repos/MRDK80/privacy-gateway/git/trees/d4cd93b3cbb27723c7088ed21b60ca76f952316f"
+  },
+  "copied_files": [
+    {
+      "source": "LICENSE",
+      "destination": "LICENSE",
+      "mode": "100644"
+    }
+  ],
+  "authority": "Provenance describes origin; it is not installation or run approval."
+}
