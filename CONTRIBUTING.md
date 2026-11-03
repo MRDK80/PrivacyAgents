@@ -40,8 +40,8 @@ Before leaving a live observation, verify client wakeup/recovery and handoff.
 Reconcile UNKNOWN effects before any retry. STOP/revoke/expiry take priority.
 
 The package verifier requires the exact repository Git checkout/index. It snapshots
-all28 reviewed tracked paths, checks regular files and ancestors before copying,
+all33 reviewed tracked paths, checks regular files and ancestors before copying,
 and never discovers untracked/private state. Ordinary sdist selection excludes
-the seven repository-only schema-foundation paths explicitly; artifact member
+the twelve repository-only schema-foundation/fixture paths explicitly; artifact member
 allowlists remain metadata-only. There is no selected-source fallback outside
 Git. Repository generation tests do not prove installed engine/runtime parity.
