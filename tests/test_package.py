@@ -144,3 +144,91 @@ def test_metadata_rejects_missing_duplicate_wrong(field: str, mutation: str) -> 
         fields[fields.index(field)] = field.split(":", 1)[0] + ": wrong"
     with pytest.raises(ValueError):
         verifier().verify_metadata(("\r\n".join(fields) + "\r\n\r\n").encode())
+
+
+def synthetic_repository(destination: Path) -> Path:
+    import shutil
+
+    destination.mkdir()
+    for name in verifier().REPOSITORY_SOURCES:
+        target = destination / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / name, target)
+    subprocess.run(
+        ["git", "init", "--initial-branch=synthetic"],
+        cwd=destination,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(["git", "add", "."], cwd=destination, check=True)
+    return destination
+
+
+def test_snapshot_rejects_unexpected_tracked_before_copy(tmp_path: Path) -> None:
+    source = synthetic_repository(tmp_path / "source")
+    (source / "unexpected.txt").write_text("synthetic extra")
+    subprocess.run(["git", "add", "unexpected.txt"], cwd=source, check=True)
+    target = tmp_path / "snapshot"
+    with pytest.raises(ValueError):
+        verifier().snapshot_tracked(source, target)
+    assert not target.exists()
+
+
+def test_snapshot_omits_untracked_private_marker(tmp_path: Path) -> None:
+    source = synthetic_repository(tmp_path / "source")
+    marker = source / ".agent-private" / "synthetic-marker.txt"
+    marker.parent.mkdir()
+    marker.write_text("synthetic marker only")
+    target = tmp_path / "snapshot"
+    verifier().snapshot_tracked(source, target)
+    assert not (target / ".agent-private").exists()
+    assert (target / "tests/test_schema_generation_type.py").is_file()
+    assert len([p for p in target.rglob("*") if p.is_file()]) == 28
+
+
+def test_snapshot_rejects_symlink_index_mode_before_copy(tmp_path: Path) -> None:
+    source = synthetic_repository(tmp_path / "source")
+    blob = subprocess.run(
+        ["git", "hash-object", "-w", "--stdin"],
+        cwd=source,
+        input="../outside",
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "update-index", "--cacheinfo", f"120000,{blob},README.md"],
+        cwd=source,
+        check=True,
+    )
+    target = tmp_path / "snapshot"
+    with pytest.raises(ValueError):
+        verifier().snapshot_tracked(source, target)
+    assert not target.exists()
+
+
+def test_ordinary_build_rejects_removed_test_exclusion(tmp_path: Path) -> None:
+    import os
+
+    module = verifier()
+    source = synthetic_repository(tmp_path / "source")
+    snapshot = tmp_path / "snapshot"
+    module.snapshot_tracked(source, snapshot)
+    manifest = snapshot / "MANIFEST.in"
+    original = manifest.read_text()
+    line = "exclude tests/test_schema_generation_type.py\n"
+    assert line in original
+    manifest.write_text(original.replace(line, ""))
+    output = tmp_path / "artifacts"
+    output.mkdir()
+    module.run(
+        [
+            sys.executable,
+            "-c",
+            f"import setuptools.build_meta as b; b.build_sdist({str(output)!r})",
+        ],
+        snapshot,
+        dict(os.environ),
+    )
+    with pytest.raises(ValueError):
+        module.read_sdist(output / f"{module.DIST}.tar.gz")
