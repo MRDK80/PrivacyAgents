@@ -100,3 +100,47 @@ def test_reject_actual_zip_special_member(tmp_path: Path, mode: int) -> None:
             archive.writestr(member, b"x")
     with pytest.raises(ValueError):
         module.read_wheel(archive_path)
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_metadata_accepts_standard_line_endings(newline: str) -> None:
+    payload = newline.join(
+        [
+            "Metadata-Version: 2.4",
+            "Name: privacy-agents",
+            "Version: 0.1.0a0",
+            "License-Expression: MIT",
+            "Requires-Python: >=3.11",
+            "",
+            "",
+        ]
+    ).encode()
+    verifier().verify_metadata(payload)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "Name: privacy-agents",
+        "Version: 0.1.0a0",
+        "License-Expression: MIT",
+        "Requires-Python: >=3.11",
+    ],
+)
+@pytest.mark.parametrize("mutation", ["missing", "duplicate", "wrong"])
+def test_metadata_rejects_missing_duplicate_wrong(field: str, mutation: str) -> None:
+    fields = [
+        "Metadata-Version: 2.4",
+        "Name: privacy-agents",
+        "Version: 0.1.0a0",
+        "License-Expression: MIT",
+        "Requires-Python: >=3.11",
+    ]
+    if mutation == "missing":
+        fields.remove(field)
+    elif mutation == "duplicate":
+        fields.append(field)
+    else:
+        fields[fields.index(field)] = field.split(":", 1)[0] + ": wrong"
+    with pytest.raises(ValueError):
+        verifier().verify_metadata(("\r\n".join(fields) + "\r\n\r\n").encode())

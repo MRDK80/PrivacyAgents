@@ -12,6 +12,8 @@ import tarfile
 import tempfile
 import venv
 import zipfile
+from email import policy
+from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
 VERSION = "0.1.0a0"
@@ -115,6 +117,22 @@ def read_wheel(path: Path) -> dict[str, bytes]:
         return {n: archive.read(n) for n in archive.namelist()}
 
 
+def verify_metadata(payload: bytes) -> None:
+    """Require exact single headers, accepting RFC LF and CRLF line endings."""
+    message = BytesParser(policy=policy.default).parsebytes(payload)
+    expected = {
+        "Name": "privacy-agents",
+        "Version": VERSION,
+        "License-Expression": "MIT",
+        "Requires-Python": ">=3.11",
+    }
+    if message.defects:
+        raise ValueError("Malformed distribution metadata")
+    for name, value in expected.items():
+        if message.get_all(name) != [value]:
+            raise ValueError("Distribution metadata mismatch: " + name)
+
+
 def run(argv: list[str], cwd: Path, env: dict[str, str]) -> str:
     return subprocess.run(
         argv, cwd=cwd, env=env, text=True, capture_output=True, timeout=120, check=True
@@ -171,14 +189,7 @@ def verify(source: Path, temporary: Path) -> dict[str, object]:
             members["privacy_agents/PROVENANCE.json"]
             == (source / "PROVENANCE.json").read_bytes()
         )
-        metadata = members[f"{INFO}/METADATA"].decode()
-        for field in (
-            "Name: privacy-agents",
-            f"Version: {VERSION}",
-            "License-Expression: MIT",
-            "Requires-Python: >=3.11",
-        ):
-            assert field + "\n" in metadata
+        verify_metadata(members[f"{INFO}/METADATA"])
         assert "privacy_agents.cli:main" in members[f"{INFO}/entry_points.txt"].decode()
         wheels.append(wheel)
     assert payloads[0] == payloads[1], "sdist payload differs"
