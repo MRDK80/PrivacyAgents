@@ -25,6 +25,14 @@ repository/policy/profile and run authority. Use separately named record familie
 with explicit version1.0 dispatch. Do not reinterpret legacy runtime configs1–8 or
 choose an implied numeric runtime9.
 
+The generic BI/AW identifier boundary is specified explicitly in BINDING_RECORDS:
+nonempty exact Unicode I strings, coarse ASCII owner/name R syntax, and nonempty
+roadmap_ref strings whose actual Git validity remains a source-consumer check.
+These are structural input rules, not trusted preparation, repository ownership or
+runtime permission. Existing legacy consumer-specific constraints remain intact;
+no normalization, guessed length cap, path reinterpretation or grant translation
+is introduced. Installation, probes, entry exposure and launch remain separate.
+
 Use the one-way construction:
 
 ```text
