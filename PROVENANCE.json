@@ -108,5 +108,63 @@
     },
     "license": "MIT; copyright notice and LICENSE retained",
     "scope": "unchanged pure legacy projection/lifecycle fragments; repository-only, excluded from wheel/sdist; not full authentication, runtime authority or grant migration"
+  },
+  "repository_only_checkpoint_predicates": {
+    "path": "tools/checkpoint_validation.py",
+    "source": "https://github.com/MRDK80/privacy-gateway/blob/e0b13d1128c91350092a5f146343edfc02c324a8/tools/agent_epic_loop.py",
+    "source_tree": "https://api.github.com/repos/MRDK80/privacy-gateway/git/trees/d4cd93b3cbb27723c7088ed21b60ca76f952316f",
+    "source_blob": "https://api.github.com/repos/MRDK80/privacy-gateway/git/blobs/9d9cb1f1f046d912e7ccb0d9ac93e064bedaeaf9",
+    "fragments": [
+      {
+        "name": "SCHEMA_VERSION",
+        "source_lines": "23-23"
+      },
+      {
+        "name": "BOOTSTRAP_SCHEMA_VERSION",
+        "source_lines": "24-24"
+      },
+      {
+        "name": "PINNED_SCHEMA_VERSION",
+        "source_lines": "25-25"
+      },
+      {
+        "name": "SHA_RE",
+        "source_lines": "26-26"
+      },
+      {
+        "name": "PHASES",
+        "source_lines": "28-37"
+      },
+      {
+        "name": "CHECKPOINT_KEYS",
+        "source_lines": "38-54"
+      },
+      {
+        "name": "LoopError",
+        "source_lines": "68-73"
+      },
+      {
+        "name": "_exact",
+        "source_lines": "646-649"
+      },
+      {
+        "name": "_next_phase",
+        "source_lines": "652-654"
+      },
+      {
+        "name": "validate_checkpoint",
+        "source_lines": "657-733"
+      },
+      {
+        "name": "_positive_id",
+        "source_lines": "736-737"
+      },
+      {
+        "name": "_valid_rate_limit_pause",
+        "source_lines": "761-777"
+      }
+    ],
+    "license": "MIT; copyright notice and LICENSE retained",
+    "scope": "unchanged selected legacy checkpoint predicate fragments, not a whole-file byte copy; repository-only and excluded from wheel/sdist; not source authentication, durable state, phase-effect proof or runtime authority"
   }
 }
