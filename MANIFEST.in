@@ -21,3 +21,5 @@ exclude tools/binding_codec.py
 exclude tests/test_binding_codec.py
 exclude tools/mandate_validation.py
 exclude tests/test_mandate_validation.py
+exclude tools/generic_entry.py
+exclude tests/test_generic_entry.py
