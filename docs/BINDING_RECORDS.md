@@ -24,6 +24,31 @@ E=positiveint;N=nonnegativeint;P=positiveint;T=nonnegative Unixseconds;I=opaque 
 trusted-preparation ID;O=expected ASCIIowneridentity;Rel=safe relativePOSIX path;
 Abs=canonical absoluteprivate path. Bool is never int. Null only where explicit.
 
+### Generic identifier and repository syntax
+
+I is a nonempty JSON string of Unicode scalar values under the strict UTF8/noNUL
+rules below. Preserve decoded codepoints exactly: no trimming, case folding,
+Unicode normalization, UUID syntax or implicit length constraint. I is an opaque
+subject identifier, not a filesystem path, command selector or proof of trusted
+origin.
+
+R is a JSON string matching the complete ASCII pattern
+`[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+`: two nonempty components and one slash. Preserve
+case and spelling exactly. This is structural repository syntax only, not proof of
+existence, ownership, source identity or permission. Actual consumers retain their
+source-specific identity, object and ancestry checks; a lexical match cannot
+replace those checks or silently normalize a different repository name.
+
+BI.target.roadmap_ref is a nonempty JSON string under the same strict encoding
+and exact-preservation rules. Its structural codec does not invoke Git or declare
+the ref valid. Before a branch/source effect, retain the original consumer's actual
+Git ref validation, no-leading-hyphen guard, epic/roadmap relationship and exact
+current ref/source/ancestry checks. No generic ref regex or length cap is added.
+
+These generic shape rules do not replace stricter or different legacy consumer
+validators, stable operation-ID construction or replay identity checks. Rel/Abs
+path rules and actual source/capability/authority validation are unchanged.
+
 Reject duplicate JSONkeys, float/NaN/Infinity, nullcharacters, ambiguous/escaping
 paths, symlink ancestors, specialfiles and wrongobjecttypes before consuming bytes.
 H(record)=tagged SHA256 UTF8 canonical JSON ensure_asciiFalse,sort_keysTrue,
