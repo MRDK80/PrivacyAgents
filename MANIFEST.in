@@ -23,3 +23,5 @@ exclude tools/mandate_validation.py
 exclude tests/test_mandate_validation.py
 exclude tools/generic_entry.py
 exclude tests/test_generic_entry.py
+exclude tools/checkpoint_validation.py
+exclude tests/test_checkpoint_validation.py

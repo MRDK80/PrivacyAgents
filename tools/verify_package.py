@@ -96,6 +96,8 @@ REPOSITORY_SOURCES = SOURCES | {
     "tests/test_mandate_validation.py",
     "tools/generic_entry.py",
     "tests/test_generic_entry.py",
+    "tools/checkpoint_validation.py",
+    "tests/test_checkpoint_validation.py",
 }
 
 
