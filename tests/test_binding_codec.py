@@ -16,12 +16,15 @@ from tools.binding_codec import (
     canonical_host_admission,
     canonical_install_approval,
     canonical_launch_approval,
+    canonical_runtime_core,
     host_admission_digest,
     install_approval_digest,
     launch_approval_digest,
     read_host_admission,
     read_install_approval,
     read_launch_approval,
+    read_runtime_core,
+    runtime_core_digest,
 )
 
 EXPECTED = (
@@ -515,3 +518,215 @@ def test_leaf_entries_require_explicit_valid_bytecap(family: str) -> None:
             operation(payload, byte_cap=False)
         with pytest.raises(CodecError):
             operation(payload, byte_cap=len(payload) - 1)
+
+
+CORE_DIGEST_FIELDS = (
+    "run_origin_digest", "engine_manifest_digest", "installation_receipt_digest",
+    "host_admission_digest", "target_profile_digest", "mandate_record_digest",
+    "mandate_authority_digest", "runtime_adapter_digest", "approved_plans_digest",
+)
+CORE_PROFILES = (
+    "planning", "wait", "quota", "continuation", "learning", "final_preparation",
+)
+CORE_EXPECTED = (
+    b'{"approved_plans_digest":"sha256:' + b"a" * 64
+    + b'","engine_manifest_digest":"sha256:' + b"b" * 64
+    + b'","feature_profiles":{"continuation":null,"final_preparation":null,'
+    b'"learning":null,"planning":null,"quota":null,"wait":null},'
+    b'"host_admission_digest":"sha256:' + b"d" * 64
+    + b'","installation_receipt_digest":"sha256:' + b"c" * 64
+    + b'","mandate_authority_digest":"sha256:' + b"a" * 64
+    + b'","mandate_record_digest":"sha256:' + b"f" * 64
+    + b'","run_origin_digest":"sha256:' + b"a" * 64
+    + b'","runtime_adapter_digest":"sha256:' + b"e" * 64
+    + b'","schema_id":"privacyagents.runtime-core","schema_version":"1.0",'
+    b'"target_profile_digest":"sha256:' + b"e" * 64 + b'"}'
+)
+
+
+def core_record() -> dict[str, object]:
+    return {
+        "schema_id": "privacyagents.runtime-core", "schema_version": "1.0",
+        "run_origin_digest": "sha256:" + "a" * 64,
+        "engine_manifest_digest": "sha256:" + "b" * 64,
+        "installation_receipt_digest": "sha256:" + "c" * 64,
+        "host_admission_digest": "sha256:" + "d" * 64,
+        "target_profile_digest": "sha256:" + "e" * 64,
+        "mandate_record_digest": "sha256:" + "f" * 64,
+        "mandate_authority_digest": "sha256:" + "a" * 64,
+        "runtime_adapter_digest": "sha256:" + "e" * 64,
+        "approved_plans_digest": "sha256:" + "a" * 64,
+        "feature_profiles": {
+            "planning": None, "wait": None, "quota": None,
+            "continuation": None, "learning": None, "final_preparation": None,
+        },
+    }
+
+
+def reject_core(payload: bytes) -> None:
+    for operation in (read_runtime_core, canonical_runtime_core, runtime_core_digest):
+        with pytest.raises(CodecError) as error:
+            operation(payload, byte_cap=len(payload) + 1)
+        assert str(error.value) == "Invalid binding record"
+        assert error.value.__context__ is None
+        assert error.value.__cause__ is None
+
+
+def test_core_independent_literal_and_hash_vector() -> None:
+    payload = raw(core_record())
+    assert read_runtime_core(payload, byte_cap=len(payload)) == core_record()
+    assert canonical_runtime_core(payload, byte_cap=len(payload)) == CORE_EXPECTED
+    assert runtime_core_digest(payload, byte_cap=len(payload)) == (
+        "sha256:" + hashlib.sha256(CORE_EXPECTED).hexdigest()
+    )
+
+
+def test_core_equivalent_json_has_same_semantic_hash() -> None:
+    changed = dict(reversed(list(core_record().items())))
+    changed["feature_profiles"] = dict(reversed(list(
+        cast(dict[str, object], changed["feature_profiles"]).items()
+    )))
+    payload = b"\r\n" + raw(changed).replace(b'"planning"', b'"plann\\u0069ng"')
+    assert canonical_runtime_core(payload, byte_cap=len(payload)) == CORE_EXPECTED
+    assert runtime_core_digest(payload, byte_cap=len(payload)) == (
+        "sha256:" + hashlib.sha256(CORE_EXPECTED).hexdigest()
+    )
+
+
+@pytest.mark.parametrize("field", CORE_DIGEST_FIELDS)
+def test_every_core_pointer_participates_in_hash(field: str) -> None:
+    changed = core_record()
+    changed[field] = "sha256:" + "0" * 64
+    payload = raw(changed)
+    assert canonical_runtime_core(payload, byte_cap=len(payload)) != CORE_EXPECTED
+    assert runtime_core_digest(payload, byte_cap=len(payload)) != (
+        "sha256:" + hashlib.sha256(CORE_EXPECTED).hexdigest()
+    )
+
+
+@pytest.mark.parametrize("field", CORE_DIGEST_FIELDS + (
+    "schema_id", "schema_version", "feature_profiles",
+))
+def test_core_missing_top_level_field(field: str) -> None:
+    changed = core_record()
+    del changed[field]
+    reject_core(raw(changed))
+
+
+@pytest.mark.parametrize("field", [
+    "extra", "self_digest", "binding_intent_digest", "launch_approval_digest",
+    "activation_digest", "launch_control_digest", "state_anchor_digest",
+    "owner_revocations_digest", "current_head_sha", "current_ledger_digest",
+    "demo_result_digest",
+])
+def test_core_rejects_extra_and_backreference_fields(field: str) -> None:
+    changed = core_record()
+    changed[field] = "sha256:" + "a" * 64
+    reject_core(raw(changed))
+
+
+@pytest.mark.parametrize("field", CORE_DIGEST_FIELDS)
+@pytest.mark.parametrize("value", [
+    None, True, 0, "a" * 64, "sha256:" + "a" * 63,
+    "sha256:" + "a" * 65, "sha256:" + "A" * 64, "sha256:" + "g" * 64,
+    "sha512:" + "a" * 64,
+])
+def test_core_digest_fields(field: str, value: object) -> None:
+    changed = core_record()
+    changed[field] = value
+    reject_core(raw(changed))
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("schema_id", "privacyagents.activation"), ("schema_id", None),
+    ("schema_id", True), ("schema_version", "2.0"),
+    ("schema_version", 1), ("schema_version", True), ("schema_version", None),
+])
+def test_core_fixed_family_tags(field: str, value: object) -> None:
+    changed = core_record()
+    changed[field] = value
+    reject_core(raw(changed))
+
+
+@pytest.mark.parametrize("value", [None, False, True, 0, "", [], {}])
+def test_core_profiles_require_closed_object(value: object) -> None:
+    changed = core_record()
+    changed["feature_profiles"] = value
+    reject_core(raw(changed))
+
+
+@pytest.mark.parametrize("profile", CORE_PROFILES)
+def test_core_requires_each_explicit_null_profile(profile: str) -> None:
+    changed = core_record()
+    profiles = cast(dict[str, object], changed["feature_profiles"])
+    del profiles[profile]
+    reject_core(raw(changed))
+
+
+@pytest.mark.parametrize("profile", CORE_PROFILES)
+@pytest.mark.parametrize("value", [False, True, "", {}, [], {"profile": "enabled"}])
+def test_core_cannot_enable_or_default_any_profile(profile: str, value: object) -> None:
+    changed = core_record()
+    profiles = cast(dict[str, object], changed["feature_profiles"])
+    profiles[profile] = value
+    reject_core(raw(changed))
+
+
+def test_core_profile_map_has_no_unknown_key() -> None:
+    changed = core_record()
+    profiles = cast(dict[str, object], changed["feature_profiles"])
+    profiles["unknown"] = None
+    reject_core(raw(changed))
+
+
+@pytest.mark.parametrize("duplicate", [
+    b',"run_origin_digest":"sha256:' + b"a" * 64 + b'"}',
+    b',"run_origin_digest":"sha256:' + b"0" * 64 + b'"}',
+    b',"run_\\u006frigin_digest":"sha256:' + b"a" * 64 + b'"}',
+])
+def test_core_duplicate_top_level_known_field(duplicate: bytes) -> None:
+    reject_core(CORE_EXPECTED[:-1] + duplicate)
+
+
+@pytest.mark.parametrize("replacement", [
+    b'"planning":null,"planning":null',
+    b'"planning":false,"planning":null',
+    b'"planning":null,"plann\\u0069ng":null',
+])
+def test_core_nested_duplicate_cannot_hide_behind_valid_final_shape(
+    replacement: bytes,
+) -> None:
+    reject_core(CORE_EXPECTED.replace(b'"planning":null', replacement))
+
+
+@pytest.mark.parametrize("payload", [b"null", b"[]", b"0", b'"string"'])
+def test_core_requires_object(payload: bytes) -> None:
+    reject_core(payload)
+
+
+@pytest.mark.parametrize("family", ["launch", "install", "host"])
+def test_core_and_leaf_entries_are_isolated(family: str) -> None:
+    value = record() if family == "launch" else leaf_record(family)
+    reject_core(raw(value))
+    if family == "launch":
+        reject(raw(core_record()))
+    else:
+        reject_leaf(family, raw(core_record()))
+
+
+def test_core_entries_require_explicit_valid_bytecap() -> None:
+    payload = raw(core_record())
+    for operation in (read_runtime_core, canonical_runtime_core, runtime_core_digest):
+        with pytest.raises(TypeError):
+            cast(Callable[..., object], operation)(payload)
+        with pytest.raises(CodecError):
+            operation(payload, byte_cap=False)
+        with pytest.raises(CodecError):
+            operation(payload, byte_cap=len(payload) - 1)
+
+
+def test_core_shape_does_not_establish_pointed_source_or_permission() -> None:
+    # The fixture pointers name no source materialization/host/mandate. Parsing
+    # only proves this record's shape; no runtime or source consumer is invoked.
+    payload = raw(core_record())
+    assert read_runtime_core(payload, byte_cap=len(payload)) == core_record()
