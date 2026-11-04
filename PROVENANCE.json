@@ -233,5 +233,40 @@
     "reused_primitives": "tools/mandate_validation.py: MandateContext, mandate_digest, mandate_lifecycle_code",
     "license": "MIT; copyright notice and LICENSE retained",
     "scope": "unchanged selected legacy Request and partial delivery predicate fragments, not whole-file byte copies; repository-only and excluded from wheel/sdist; supplied assessments are not primary CI, source identity or effect permission"
+  },
+  "repository_only_report_validation": {
+    "path": "tools/report_validation.py",
+    "source": "https://github.com/MRDK80/privacy-gateway/blob/e0b13d1128c91350092a5f146343edfc02c324a8/tools/agent_orchestrate.py",
+    "source_blob": "https://api.github.com/repos/MRDK80/privacy-gateway/git/blobs/6cb79755e35ad995ed0d416739c44166e19b0948",
+    "fragments": [
+      {
+        "name": "CONTROLLER_VERDICT_SCHEMA",
+        "source_lines": "41-41"
+      },
+      {
+        "name": "TRUST_BOUNDARY_INVARIANTS",
+        "source_lines": "42-45"
+      },
+      {
+        "name": "OrchestrationError",
+        "source_lines": "78-83"
+      },
+      {
+        "name": "_validate_report",
+        "source_lines": "627-657"
+      },
+      {
+        "name": "_canonical_trust_source_kinds",
+        "source_lines": "660-679"
+      },
+      {
+        "name": "_validate_verdict",
+        "source_lines": "682-731"
+      }
+    ],
+    "annotation_seam": "Only _validate_report/_validate_verdict contract annotation TaskContract -> private read-only _ReportContract Protocol; function bodies unchanged. Not whole-fragment or whole-file byte copy for these two definitions.",
+    "license": "MIT; copyright notice and LICENSE retained",
+    "scope": "Repository-only partial legacy guards and own canonical resource reader/cache; excluded from wheel/sdist; not source authentication, actual independent review, effects or runtime authority.",
+    "source_tree": "https://api.github.com/repos/MRDK80/privacy-gateway/git/trees/d4cd93b3cbb27723c7088ed21b60ca76f952316f"
   }
 }

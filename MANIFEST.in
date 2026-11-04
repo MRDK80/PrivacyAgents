@@ -27,3 +27,5 @@ exclude tools/checkpoint_validation.py
 exclude tests/test_checkpoint_validation.py
 exclude tools/delivery_validation.py
 exclude tests/test_delivery_validation.py
+exclude tools/report_validation.py
+exclude tests/test_report_validation.py
