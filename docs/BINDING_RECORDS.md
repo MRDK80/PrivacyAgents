@@ -448,15 +448,16 @@ returns only the safeINPUT_INVALID token onstderr/exit2; a handledINVALID record
 result uses the closedJSONstdout shape/exit2 and emptystderr.
 Result schema_id privacyagents.entry-result,version1.0, additional status,
 machine_code,run_id:I-or-null,phase:the exact phaseenum in BINDING_OPERATIONS.md-or-null,observed_control_generation:N-or-null.
-Status exactVALIDATED|INITIALIZED|PAUSED|STOPPED|TERMINAL|BLOCKED|INVALID.
+Status exactVALIDATED|INITIALIZED|PAUSED|STOPPED|TERMINAL|BLOCKED|INVALID|OBSERVED.
 Machine_code is an engine-owned closed registry established beforeimplementation;
 the following exact specified codes OK,INPUT_INVALID,UNSUPPORTED_VERSION,SOURCE_UNVERIFIED,
 IDENTITY_MISMATCH,OWNER_APPROVAL_MISMATCH,OWNER_STOPPED,OWNER_PAUSED,GRANT_EXPIRED,
 COUNTER_EXHAUSTED,CLOCK_UNCONFIRMED,STATE_UNKNOWN,PROCESS_OWNERSHIP_UNKNOWN,
 CAPABILITY_UNSUPPORTED. Do not use modeltext ascode or addcodes silently.
 
-Exit0 for acceptedVALIDATED/INITIALIZED and provednormalPAUSED/STOPPED/TERMINAL
-outcomes; exit1 for safeBLOCKED denial; exit2 for INVALIDinvocation/shape.
+Exit0 for acceptedVALIDATED/INITIALIZED, authenticated read-only status OBSERVED,
+and provednormalPAUSED/STOPPED/TERMINAL outcomes; exit1 for safeBLOCKED denial;
+exit2 for INVALIDinvocation/shape.
 Minimalresume is synchronous: supervise its processes to PAUSED/STOPPED/TERMINAL
 or concreteBLOCKED within originalbounds before returning its oneJSONresult. It
 does not return backgroundRUNNING. PIDalone is notprogress. These are specified newentry contracts, not currentmetadata
@@ -464,6 +465,84 @@ CLI semantics. Owner approval of the exact entry contract is required beforecode
 The metadataCLI's --help/--version behavior is preserved; no newpubliccommands in
 this contract. FinalCLI exposure/installerpackageintegration is a later
 explicitcausalPR, not an inferred change from copying purefoundation sources.
+
+## 8.1 Exact frozen entry exposure amendment
+
+The trusted pre-entry driver invokes the owner-pinned interpreter with -I -B and
+the verified installed payload/bootstrap/binding-entry.py. Interpreter/bootstrap
+argv is separate from these exactly seven protocol items:
+
+COMMAND --context ABS --approved-context-digest D --record-limit-bytes P
+
+COMMAND MUST be item1, exact lowercase one of validate,initialize,resume,status,
+pause,stop. The remaining six items are exactly three split-token flag/value
+pairs, each flag once, any pair order. Reject --flag=value, -- separator, duplicate/
+missing/unknown/abbreviated flags, extra positionals, responsefile expansion,
+--help/--version and environment defaults. A value is consumed only immediately
+after its recognized flag and must satisfy that field grammar. Flag-looking
+values cannot satisfy ABS/D/P; do not reinterpret them as flags or commands.
+No shell, tilde, environment-variable, cwd or PATH expansion is performed.
+
+D is exactly the existing lowercase sha256:<64lowercasehex> syntax. P is exactly
+ASCII [1-9][0-9]*, no sign, leading zero, whitespace or Unicode digits. There is no
+new maximum-length rule, numeric cap or default. Native integer conversion
+failure, including an interpreter's existing integer-string conversion limit,
+is safe malformed invocation INPUT_INVALID; do not change interpreter limits.
+P must later equal OC.record_limit_bytes and remain externally admitted, not
+inferred approval from successful parsing.
+
+ABS is an argv string lexically absolute under the admitted native host's absolute
+path syntax, without expansion, normalization or rewriting. This lexical check
+alone establishes no canonical/private source identity. Actual canonicality,
+private ownership, regular/singlelink file type, no symlink ancestors, namespace
+and exact source checks remain separately admitted native-driver/verifier duties
+before effects or payload import. No new host/platform path policy is selected
+by this proposal.
+
+RV is only the fixed record-resolver.json sibling of --context in the externally
+verified private operator directory. No glob, record-provided locator or fallback.
+OC and RV must be distinct actual filesystem objects: reject context whose actual
+file identity equals the RV file, including naming --context record-resolver.json
+or any alias/collision. Symlink/hardlink/type rules remain applicable; this does
+not grant acceptance of aliases that those rules deny. Handle a safely parsed
+locator/source collision as BLOCKED/SOURCE_UNVERIFIED, never read one object as
+both root kinds and never fall back. Trusted driver observes actual file identity
+under admitted host rules; pathname inequality is insufficient.
+
+The driver externally pins expected H(OC), interpreter/entry bytes and trusted
+operator channel. After H(OC) verification, OC pins expected RV and LA; OC/RV are
+never resolver subjects. The authoritative source-class namespace mapping is an
+independently admitted driver/verifier input, not an RV self-grant, ownerstat alone,
+JSON label, model flag or fabricated capability PASS. Exact mapping/source closure
+remains a prerequisite to source implementation and separately admitted execution.
+
+This amendment keeps the fourteen existing codes and all section8 result fields,
+stream/exit rules, six commands and existing non-status command outputs. No new
+numeric cap or grant. Every phase is only PLAN, RUN_TASK, PR_CI, MERGE, POST_MERGE,
+DEMO, TASK_DONE, NEXT_TASK or null, exactly BINDING_OPERATIONS; do not manufacture
+RUNNING, FINAL, WAITING_OWNER or command names as phases. Null subject fields until
+authenticated actual subject facts are known. Unknown/ambiguous snapshot remains
+BLOCKED/STATE_UNKNOWN exit1; unknown process ownership is
+BLOCKED/PROCESS_OWNERSHIP_UNKNOWN exit1. Actual crash/kill is not handled success.
+
+Add exactly OBSERVED to the seven existing statuses. Only the read-only status
+command may emit OBSERVED/OK exit0, and only after authenticated consistent
+nonterminal snapshot observation. That result is observation success, NOT process
+progress, exclusive ownership, current run permission, readiness or permission to
+resume/effect. It performs no state write or engine-payload import. Existing proved
+PAUSED/STOPPED/TERMINAL status outcomes keep their existing respective statuses and
+codes; OBSERVED is for other authenticated consistent nonterminal snapshot only.
+Unknown ownership must not be represented as OBSERVED.
+
+Validate→VALIDATED/OK exit0 only after actual applicable read-only guards;
+initialize→INITIALIZED/OK exit0 only after proven normal initialization. Resume is
+synchronous: proved PAUSED/OWNER_PAUSED, STOPPED/OWNER_STOPPED, TERMINAL/OK exit0,
+or concrete BLOCKED exit1; never OBSERVED/background RUNNING. Pause/stop exit0
+requires proved consistent durable outcome and actual required process closure.
+Restrictive control semantics and full-authority initialize/resume guards remain
+unchanged. Unsupported/unknown facts do not become positive capability evidence.
+
+This is an explicit status contract change, not inherited v4 permission. It changes neither the phase enum nor the fourteen-code registry.
 
 ## 9. Accepted design and execution boundary
 
