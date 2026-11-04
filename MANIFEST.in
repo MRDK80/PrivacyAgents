@@ -25,3 +25,5 @@ exclude tools/generic_entry.py
 exclude tests/test_generic_entry.py
 exclude tools/checkpoint_validation.py
 exclude tests/test_checkpoint_validation.py
+exclude tools/delivery_validation.py
+exclude tests/test_delivery_validation.py

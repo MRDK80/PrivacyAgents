@@ -166,5 +166,72 @@
     ],
     "license": "MIT; copyright notice and LICENSE retained",
     "scope": "unchanged selected legacy checkpoint predicate fragments, not a whole-file byte copy; repository-only and excluded from wheel/sdist; not source authentication, durable state, phase-effect proof or runtime authority"
+  },
+  "repository_only_delivery_predicates": {
+    "path": "tools/delivery_validation.py",
+    "sources": [
+      {
+        "file": "https://github.com/MRDK80/privacy-gateway/blob/e0b13d1128c91350092a5f146343edfc02c324a8/tools/agent_epic_delivery.py",
+        "blob": "https://api.github.com/repos/MRDK80/privacy-gateway/git/blobs/4237b71449f8f75a6c3a3a07694aba85373f7125",
+        "fragments": [
+          {
+            "name": "SHA_RE",
+            "source_lines": "26-26"
+          },
+          {
+            "name": "DIGEST_RE",
+            "source_lines": "27-27"
+          },
+          {
+            "name": "OPERATIONS",
+            "source_lines": "28-37"
+          },
+          {
+            "name": "POST_MERGE_OPERATIONS",
+            "source_lines": "38-38"
+          },
+          {
+            "name": "Request",
+            "source_lines": "49-63"
+          },
+          {
+            "name": "_valid_request",
+            "source_lines": "149-188"
+          },
+          {
+            "name": "_authorized",
+            "source_lines": "191-227"
+          },
+          {
+            "name": "_assessment_code",
+            "source_lines": "230-269"
+          }
+        ]
+      },
+      {
+        "file": "https://github.com/MRDK80/privacy-gateway/blob/e0b13d1128c91350092a5f146343edfc02c324a8/tools/agent_epic_handover.py",
+        "blob": "https://api.github.com/repos/MRDK80/privacy-gateway/git/blobs/596ad14bbd22e06ddb2a77b3d311195eeeab8806",
+        "fragments": [
+          {
+            "name": "MANDATE_FIELDS",
+            "source_lines": "23-37"
+          }
+        ]
+      },
+      {
+        "file": "https://github.com/MRDK80/privacy-gateway/blob/e0b13d1128c91350092a5f146343edfc02c324a8/tools/agent_coordinator_delivery.py",
+        "blob": "https://api.github.com/repos/MRDK80/privacy-gateway/git/blobs/b80fa38afbf8038f56ce42016a74e28e871e19c2",
+        "fragments": [
+          {
+            "name": "REQUIRED_CHECKS",
+            "source_lines": "19-27"
+          }
+        ]
+      }
+    ],
+    "source_tree": "https://api.github.com/repos/MRDK80/privacy-gateway/git/trees/d4cd93b3cbb27723c7088ed21b60ca76f952316f",
+    "reused_primitives": "tools/mandate_validation.py: MandateContext, mandate_digest, mandate_lifecycle_code",
+    "license": "MIT; copyright notice and LICENSE retained",
+    "scope": "unchanged selected legacy Request and partial delivery predicate fragments, not whole-file byte copies; repository-only and excluded from wheel/sdist; supplied assessments are not primary CI, source identity or effect permission"
   }
 }
