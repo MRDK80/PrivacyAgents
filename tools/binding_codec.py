@@ -1,7 +1,7 @@
 """Repository-only structural binding codecs, never permission/lifecycle checks.
 
 A returned record or digest does not authenticate its owner, resolve its source,
-validate a time window, or authorize any effect. Only named LA/IA/HA/RC1.0
+validate a time window, or authorize any effect. Only named LA/IA/HA/RC/BI/AW1.0
 entry paths are supported. No filesystem, clock or runtime consumer is involved.
 """
 
@@ -272,3 +272,170 @@ def runtime_core_digest(payload: bytes, *, byte_cap: int) -> str:
     return "sha256:" + hashlib.sha256(
         canonical_runtime_core(payload, byte_cap=byte_cap)
     ).hexdigest()
+
+
+_REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\Z")
+_GIT_OBJECT = re.compile(r"[0-9a-f]{40}\Z")
+_INTENT_GROUPS = {
+    "engine": {
+        "repository": "R", "source_sha": "G", "source_tree": "G",
+        "manifest_digest": "D",
+    },
+    "installation": {
+        "installation_id": "I", "receipt_digest": "D", "destination_digest": "D",
+        "interpreter_digest": "D", "toolchain_digest": "D",
+        "host_admission_digest": "D",
+    },
+    "target": {
+        "repository": "R", "epic": "E", "roadmap_ref": "I", "policy_sha": "G",
+        "initial_base_sha": "G", "initial_head_sha": "G", "profile_digest": "D",
+    },
+    "authority": {
+        "owner_identity": "O", "mandate_record_digest": "D",
+        "mandate_authority_digest": "D", "run_origin_digest": "D",
+        "control_namespace_digest": "D", "revocation_namespace_digest": "D",
+    },
+}
+_INTENT_FIELDS = frozenset(_INTENT_GROUPS) | {
+    "schema_id", "schema_version", "runtime_core_digest",
+}
+_ACTIVATION_FIELDS = frozenset({
+    "schema_id", "schema_version", "run_id", "runtime_core_digest",
+    "binding_intent_digest", "launch_approval_digest",
+})
+
+
+def _spine_scalar(value: object, kind: str) -> bool:
+    """Finite structural primitives only; no source, Git or trust observation."""
+    if kind == "E":
+        return type(value) is int and value > 0
+    if not isinstance(value, str):
+        return False
+    if kind == "D":
+        return _DIGEST.fullmatch(value) is not None
+    if kind == "G":
+        return _GIT_OBJECT.fullmatch(value) is not None
+    if kind == "R":
+        return _REPOSITORY.fullmatch(value) is not None
+    if kind == "I":
+        return bool(value)
+    if kind == "O":
+        return value.isascii()
+    return False
+
+
+def _binding_intent_shape(value: object) -> dict[str, object]:
+    if type(value) is not dict:
+        raise CodecError()
+    record = cast(dict[str, object], value)
+    if record.keys() != _INTENT_FIELDS:
+        raise CodecError()
+    if (
+        record["schema_id"] != "privacyagents.binding-intent"
+        or record["schema_version"] != "1.0"
+        or not _spine_scalar(record["runtime_core_digest"], "D")
+    ):
+        raise CodecError()
+    for name, fields in _INTENT_GROUPS.items():
+        group = record[name]
+        if type(group) is not dict:
+            raise CodecError()
+        members = cast(dict[str, object], group)
+        if members.keys() != fields.keys() or any(
+            not _spine_scalar(members[field], kind) for field, kind in fields.items()
+        ):
+            raise CodecError()
+    return record
+
+
+def _activation_shape(value: object) -> dict[str, object]:
+    if type(value) is not dict:
+        raise CodecError()
+    record = cast(dict[str, object], value)
+    if record.keys() != _ACTIVATION_FIELDS:
+        raise CodecError()
+    if (
+        record["schema_id"] != "privacyagents.activation"
+        or record["schema_version"] != "1.0"
+        or not _spine_scalar(record["run_id"], "I")
+    ):
+        raise CodecError()
+    for field in (
+        "runtime_core_digest", "binding_intent_digest", "launch_approval_digest"
+    ):
+        if not _spine_scalar(record[field], "D"):
+            raise CodecError()
+    return record
+
+
+def read_binding_intent(payload: bytes, *, byte_cap: int) -> dict[str, object]:
+    """Decode structural BI1.0; no actual source, owner or Git fact is checked."""
+    return _binding_intent_shape(_strict_json(payload, byte_cap))
+
+
+def canonical_binding_intent(payload: bytes, *, byte_cap: int) -> bytes:
+    """Encode every closed BI field with exact codepoints and no exclusions."""
+    return _canonical_json(read_binding_intent(payload, byte_cap=byte_cap))
+
+
+def binding_intent_digest(payload: bytes, *, byte_cap: int) -> str:
+    """Hash structural BI bytes; this digest confers no authority or readiness."""
+    return "sha256:" + hashlib.sha256(
+        canonical_binding_intent(payload, byte_cap=byte_cap)
+    ).hexdigest()
+
+
+def read_activation(payload: bytes, *, byte_cap: int) -> dict[str, object]:
+    """Decode structural AW1.0; run identity and actual activation are unverified."""
+    return _activation_shape(_strict_json(payload, byte_cap))
+
+
+def canonical_activation(payload: bytes, *, byte_cap: int) -> bytes:
+    """Encode all six checked AW fields, with no normalization or exclusions."""
+    return _canonical_json(read_activation(payload, byte_cap=byte_cap))
+
+
+def activation_digest(payload: bytes, *, byte_cap: int) -> str:
+    """Hash structural AW bytes; no source or actual activation is established."""
+    return "sha256:" + hashlib.sha256(
+        canonical_activation(payload, byte_cap=byte_cap)
+    ).hexdigest()
+
+
+def check_envelope_consistency(
+    runtime_core: bytes, binding_intent: bytes, launch_approval: bytes,
+    activation: bytes, *, byte_cap: int,
+) -> None:
+    """Check twelve pointers among four supplied records, solely as data.
+
+    None means partial data consistency, never a trusted binding or permission.
+    No expected LA/owner, source kind/resolver, window/revocation, RO/run identity,
+    Git, installation or host fact is validated. Forged or revoked/expired records
+    can be consistent. No effect follows this pure check.
+    """
+    rc = read_runtime_core(runtime_core, byte_cap=byte_cap)
+    bi = read_binding_intent(binding_intent, byte_cap=byte_cap)
+    la = read_launch_approval(launch_approval, byte_cap=byte_cap)
+    aw = read_activation(activation, byte_cap=byte_cap)
+    rc_h = "sha256:" + hashlib.sha256(_canonical_json(rc)).hexdigest()
+    bi_h = "sha256:" + hashlib.sha256(_canonical_json(bi)).hexdigest()
+    la_h = "sha256:" + hashlib.sha256(_canonical_json(la)).hexdigest()
+    engine = cast(dict[str, object], bi["engine"])
+    installation = cast(dict[str, object], bi["installation"])
+    target = cast(dict[str, object], bi["target"])
+    authority = cast(dict[str, object], bi["authority"])
+    if not all((
+        bi["runtime_core_digest"] == rc_h,
+        rc["engine_manifest_digest"] == engine["manifest_digest"],
+        rc["installation_receipt_digest"] == installation["receipt_digest"],
+        rc["host_admission_digest"] == installation["host_admission_digest"],
+        rc["target_profile_digest"] == target["profile_digest"],
+        rc["mandate_record_digest"] == authority["mandate_record_digest"],
+        rc["mandate_authority_digest"] == authority["mandate_authority_digest"],
+        rc["run_origin_digest"] == authority["run_origin_digest"],
+        la["binding_intent_digest"] == bi_h,
+        aw["runtime_core_digest"] == rc_h,
+        aw["binding_intent_digest"] == bi_h,
+        aw["launch_approval_digest"] == la_h,
+    )):
+        raise CodecError()

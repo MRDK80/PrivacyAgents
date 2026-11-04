@@ -13,13 +13,20 @@ from tools.binding_codec import (
     CodecError,
     _canonical_json,
     _strict_json,
+    activation_digest,
+    binding_intent_digest,
+    canonical_activation,
+    canonical_binding_intent,
     canonical_host_admission,
     canonical_install_approval,
     canonical_launch_approval,
     canonical_runtime_core,
+    check_envelope_consistency,
     host_admission_digest,
     install_approval_digest,
     launch_approval_digest,
+    read_activation,
+    read_binding_intent,
     read_host_admission,
     read_install_approval,
     read_launch_approval,
@@ -730,3 +737,498 @@ def test_core_shape_does_not_establish_pointed_source_or_permission() -> None:
     # only proves this record's shape; no runtime or source consumer is invoked.
     payload = raw(core_record())
     assert read_runtime_core(payload, byte_cap=len(payload)) == core_record()
+
+
+def fixture_D(symbol: str) -> bytes:
+    return b"sha256:" + symbol.encode("ascii") * 64
+
+
+def literal_H(value: bytes) -> str:
+    return "sha256:" + hashlib.sha256(value).hexdigest()
+
+
+SPINE_RC = (
+    b'{"approved_plans_digest":"' + fixture_D("8")
+    + b'","engine_manifest_digest":"' + fixture_D("1")
+    + b'","feature_profiles":{"continuation":null,"final_preparation":null,'
+    b'"learning":null,"planning":null,"quota":null,"wait":null},'
+    b'"host_admission_digest":"' + fixture_D("3")
+    + b'","installation_receipt_digest":"' + fixture_D("2")
+    + b'","mandate_authority_digest":"' + fixture_D("6")
+    + b'","mandate_record_digest":"' + fixture_D("5")
+    + b'","run_origin_digest":"' + fixture_D("0")
+    + b'","runtime_adapter_digest":"' + fixture_D("7")
+    + b'","schema_id":"privacyagents.runtime-core","schema_version":"1.0",'
+    b'"target_profile_digest":"' + fixture_D("4") + b'"}'
+)
+SPINE_BI = (
+    b'{"authority":{"control_namespace_digest":"' + fixture_D("c")
+    + b'","mandate_authority_digest":"' + fixture_D("6")
+    + b'","mandate_record_digest":"' + fixture_D("5")
+    + b'","owner_identity":"fixture-untrusted-owner",'
+    b'"revocation_namespace_digest":"' + fixture_D("d")
+    + b'","run_origin_digest":"' + fixture_D("0")
+    + b'"},"engine":{"manifest_digest":"' + fixture_D("1")
+    + b'","repository":"Fixture.Engine/repo_name","source_sha":"' + b"a" * 40
+    + b'","source_tree":"' + b"b" * 40
+    + b'"},"installation":{"destination_digest":"' + fixture_D("9")
+    + b'","host_admission_digest":"' + fixture_D("3")
+    + b'","installation_id":"install-\xc3\xa9","interpreter_digest":"'
+    + fixture_D("a") + b'","receipt_digest":"' + fixture_D("2")
+    + b'","toolchain_digest":"' + fixture_D("b")
+    + b'"},"runtime_core_digest":"' + literal_H(SPINE_RC).encode("ascii")
+    + b'","schema_id":"privacyagents.binding-intent","schema_version":"1.0",'
+    b'"target":{"epic":1,"initial_base_sha":"' + b"c" * 40
+    + b'","initial_head_sha":"' + b"d" * 40 + b'","policy_sha":"' + b"e" * 40
+    + b'","profile_digest":"' + fixture_D("4")
+    + b'","repository":"./..","roadmap_ref":" \\t"}}'
+)
+SPINE_LA = (
+    b'{"action":"launch-bound-synthetic-run","approved_at":2,'
+    b'"binding_intent_digest":"' + literal_H(SPINE_BI).encode("ascii")
+    + b'","expires_at":8,"not_before":1,'
+    b'"owner_identity":"fixture-untrusted-owner","revoked":false,'
+    b'"schema_id":"privacyagents.launch-approval","schema_version":"1.0"}'
+)
+SPINE_AW = (
+    b'{"binding_intent_digest":"' + literal_H(SPINE_BI).encode("ascii")
+    + b'","launch_approval_digest":"' + literal_H(SPINE_LA).encode("ascii")
+    + b'","run_id":"run-\xc3\xa9","runtime_core_digest":"'
+    + literal_H(SPINE_RC).encode("ascii")
+    + b'","schema_id":"privacyagents.activation","schema_version":"1.0"}'
+)
+BI_SLOTS = {
+    "engine": {
+        "repository": "R", "source_sha": "G", "source_tree": "G",
+        "manifest_digest": "D",
+    },
+    "installation": {
+        "installation_id": "I", "receipt_digest": "D", "destination_digest": "D",
+        "interpreter_digest": "D", "toolchain_digest": "D",
+        "host_admission_digest": "D",
+    },
+    "target": {
+        "repository": "R", "epic": "E", "roadmap_ref": "I", "policy_sha": "G",
+        "initial_base_sha": "G", "initial_head_sha": "G", "profile_digest": "D",
+    },
+    "authority": {
+        "owner_identity": "O", "mandate_record_digest": "D",
+        "mandate_authority_digest": "D", "run_origin_digest": "D",
+        "control_namespace_digest": "D", "revocation_namespace_digest": "D",
+    },
+}
+SpineData = tuple[
+    dict[str, object], dict[str, object], dict[str, object], dict[str, object]
+]
+
+
+def spine_data() -> SpineData:
+    return (
+        cast(dict[str, object], json.loads(SPINE_RC)),
+        cast(dict[str, object], json.loads(SPINE_BI)),
+        cast(dict[str, object], json.loads(SPINE_LA)),
+        cast(dict[str, object], json.loads(SPINE_AW)),
+    )
+
+
+def bi_group(value: dict[str, object], group: str) -> dict[str, object]:
+    return cast(dict[str, object], value[group])
+
+
+def envelope_operations(family: str) -> tuple[Callable[..., object], ...]:
+    if family == "BI":
+        return (read_binding_intent, canonical_binding_intent, binding_intent_digest)
+    return (read_activation, canonical_activation, activation_digest)
+
+
+def reject_envelope_record(family: str, payload: bytes) -> None:
+    for operation in envelope_operations(family):
+        with pytest.raises(CodecError) as error:
+            operation(payload, byte_cap=len(payload) + 1)
+        assert str(error.value) == "Invalid binding record"
+        assert error.value.__context__ is None
+        assert error.value.__cause__ is None
+
+
+def check_spine(data: SpineData) -> None:
+    r, b, la, a = (raw(record) for record in data)
+    checker: Callable[..., object] = check_envelope_consistency
+    result = checker(r, b, la, a, byte_cap=max(map(len, (r, b, la, a))))
+    assert result is None
+
+
+def fixture_hash(value: dict[str, object]) -> str:
+    """Build mutated INPUT pointers only; wire golden oracles above are literals."""
+    data = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return literal_H(data.encode("utf-8"))
+
+
+def rebind_fixture(data: SpineData, *, bind_la: bool = True) -> None:
+    r, b, la, a = data
+    if bind_la:
+        la["binding_intent_digest"] = fixture_hash(b)
+    a["runtime_core_digest"] = fixture_hash(r)
+    a["binding_intent_digest"] = fixture_hash(b)
+    a["launch_approval_digest"] = fixture_hash(la)
+
+
+def fixture_join_oracles(data: SpineData) -> list[bool]:
+    r, b, la, a = data
+    engine = bi_group(b, "engine")
+    installation = bi_group(b, "installation")
+    target = bi_group(b, "target")
+    authority = bi_group(b, "authority")
+    return [
+        b["runtime_core_digest"] == fixture_hash(r),
+        r["engine_manifest_digest"] == engine["manifest_digest"],
+        r["installation_receipt_digest"] == installation["receipt_digest"],
+        r["host_admission_digest"] == installation["host_admission_digest"],
+        r["target_profile_digest"] == target["profile_digest"],
+        r["mandate_record_digest"] == authority["mandate_record_digest"],
+        r["mandate_authority_digest"] == authority["mandate_authority_digest"],
+        r["run_origin_digest"] == authority["run_origin_digest"],
+        la["binding_intent_digest"] == fixture_hash(b),
+        a["runtime_core_digest"] == fixture_hash(r),
+        a["binding_intent_digest"] == fixture_hash(b),
+        a["launch_approval_digest"] == fixture_hash(la),
+    ]
+
+
+@pytest.mark.parametrize(("family", "expected"), [("BI", SPINE_BI), ("AW", SPINE_AW)])
+def test_envelope_independent_canonical_literals(family: str, expected: bytes) -> None:
+    read, canonical, digest = envelope_operations(family)
+    value = cast(dict[str, object], json.loads(expected))
+    payload = raw(dict(reversed(list(value.items()))))
+    assert read(payload, byte_cap=len(payload)) == value
+    assert canonical(payload, byte_cap=len(payload)) == expected
+    assert digest(payload, byte_cap=len(payload)) == literal_H(expected)
+
+
+def test_explicit_acyclic_spine_is_only_data_consistency() -> None:
+    data = spine_data()
+    assert all(fixture_join_oracles(data))
+    check_spine(data)
+
+
+@pytest.mark.parametrize("field", (
+    "schema_id", "schema_version", "runtime_core_digest",
+    "engine", "installation", "target", "authority",
+))
+def test_bi_missing_top_key(field: str) -> None:
+    _, b, _, _ = spine_data()
+    del b[field]
+    reject_envelope_record("BI", raw(b))
+
+
+@pytest.mark.parametrize(("group", "field"), [
+    (group, field) for group, fields in BI_SLOTS.items() for field in fields
+])
+def test_bi_missing_nested_key(group: str, field: str) -> None:
+    _, b, _, _ = spine_data()
+    del bi_group(b, group)[field]
+    reject_envelope_record("BI", raw(b))
+
+
+@pytest.mark.parametrize("group", [None, *BI_SLOTS])
+@pytest.mark.parametrize("extra", ["extra", "self_digest", "launch_approval_digest"])
+def test_bi_closed_objects(group: str | None, extra: str) -> None:
+    _, b, _, _ = spine_data()
+    target = b if group is None else bi_group(b, group)
+    target[extra] = "synthetic-invalid-marker"
+    reject_envelope_record("BI", raw(b))
+
+
+@pytest.mark.parametrize("group", BI_SLOTS)
+@pytest.mark.parametrize("value", [None, False, [], "", 0])
+def test_bi_nested_group_requires_object(group: str, value: object) -> None:
+    _, b, _, _ = spine_data()
+    b[group] = value
+    reject_envelope_record("BI", raw(b))
+
+
+@pytest.mark.parametrize("field", (
+    "schema_id", "schema_version", "run_id", "runtime_core_digest",
+    "binding_intent_digest", "launch_approval_digest",
+))
+def test_aw_missing_key(field: str) -> None:
+    _, _, _, a = spine_data()
+    del a[field]
+    reject_envelope_record("AW", raw(a))
+
+
+@pytest.mark.parametrize("family", ["BI", "AW"])
+@pytest.mark.parametrize("field", [
+    "self_digest", "activation_digest", "current_head_sha", "state_anchor_digest",
+])
+def test_envelope_rejects_mutable_or_cyclic_extra(family: str, field: str) -> None:
+    _, b, _, a = spine_data()
+    value = b if family == "BI" else a
+    value[field] = "sha256:" + "f" * 64
+    reject_envelope_record(family, raw(value))
+
+
+INVALID_BY_TYPE: dict[str, list[object]] = {
+    "D": [None, True, 0, "a" * 64, "sha256:" + "a" * 63,
+          "sha256:" + "A" * 64, "sha256:" + "g" * 64],
+    "G": [None, True, 0, "a" * 39, "a" * 41, "A" * 40, "g" * 40],
+    "I": [None, False, 0, "", "nul\0id", "\ud800"],
+    "R": [None, False, 0, "", "/repo", "owner/", "o/r/x", "\u00e9/repo", "o/r x"],
+    "E": [None, True, False, 0, -1, 1.0, "1"],
+    "O": [None, True, 0, "non-ascii-\u00e9", "nul\0owner"],
+}
+
+
+@pytest.mark.parametrize(("group", "field", "value"), [
+    (group, field, value) for group, fields in BI_SLOTS.items()
+    for field, kind in fields.items() for value in INVALID_BY_TYPE[kind]
+])
+def test_each_bi_typed_slot(group: str, field: str, value: object) -> None:
+    _, b, _, _ = spine_data()
+    bi_group(b, group)[field] = value
+    reject_envelope_record("BI", raw(b))
+
+
+@pytest.mark.parametrize(("family", "field", "value"), [
+    ("BI", "runtime_core_digest", value) for value in INVALID_BY_TYPE["D"]
+] + [
+    ("AW", field, value) for field in (
+        "runtime_core_digest", "binding_intent_digest", "launch_approval_digest"
+    ) for value in INVALID_BY_TYPE["D"]
+] + [("AW", "run_id", value) for value in INVALID_BY_TYPE["I"]])
+def test_each_envelope_top_typed_slot(family: str, field: str, value: object) -> None:
+    _, b, _, a = spine_data()
+    changed = b if family == "BI" else a
+    changed[field] = value
+    reject_envelope_record(family, raw(changed))
+
+
+@pytest.mark.parametrize("family", ["BI", "AW"])
+@pytest.mark.parametrize(("field", "value"), [
+    ("schema_id", "unknown-family"), ("schema_id", "privacyagents.entry-result"),
+    ("schema_id", None), ("schema_version", "2.0"), ("schema_version", 1),
+    ("schema_version", True), ("schema_version", None),
+])
+def test_envelope_exact_family_version(family: str, field: str, value: object) -> None:
+    _, b, _, a = spine_data()
+    changed = b if family == "BI" else a
+    changed[field] = value
+    reject_envelope_record(family, raw(changed))
+
+
+@pytest.mark.parametrize("identity", [" ", "\t\n", "MiXeD", "\u00e9", "e\u0301"])
+def test_approved_I_and_ref_boundaries_preserved(identity: str) -> None:
+    _, b, _, a = spine_data()
+    bi_group(b, "installation")["installation_id"] = identity
+    bi_group(b, "target")["roadmap_ref"] = identity
+    a["run_id"] = identity
+    payload_b, payload_a = raw(b), raw(a)
+    decoded = read_binding_intent(payload_b, byte_cap=len(payload_b))
+    assert bi_group(decoded, "installation")["installation_id"] == identity
+    assert bi_group(decoded, "target")["roadmap_ref"] == identity
+    assert read_activation(payload_a, byte_cap=len(payload_a))["run_id"] == identity
+
+
+@pytest.mark.parametrize("repository", ["./..", "Dot.Owner/repo_name-1", "../."])
+def test_repository_lexical_shape_is_not_actual_Git(repository: str) -> None:
+    _, b, _, _ = spine_data()
+    bi_group(b, "engine")["repository"] = repository
+    bi_group(b, "target")["repository"] = repository
+    payload = raw(b)
+    decoded = read_binding_intent(payload, byte_cap=len(payload))
+    assert bi_group(decoded, "target")["repository"] == repository
+
+
+def test_O_keeps_existing_ASCII_boundary_independent_of_I() -> None:
+    _, b, _, _ = spine_data()
+    bi_group(b, "authority")["owner_identity"] = ""
+    payload = raw(b)
+    decoded = read_binding_intent(payload, byte_cap=len(payload))
+    assert bi_group(decoded, "authority")["owner_identity"] == ""
+
+
+def test_unicode_I_has_no_normalization_in_canonical_bytes() -> None:
+    _, b, _, a = spine_data()
+    payload = raw(b)
+    assert canonical_binding_intent(payload, byte_cap=len(payload)) == SPINE_BI
+    bi_group(b, "installation")["installation_id"] = "install-e\u0301"
+    decomposed = raw(b)
+    expected = SPINE_BI.replace(b"install-\xc3\xa9", b"install-e\xcc\x81")
+    assert canonical_binding_intent(decomposed, byte_cap=len(decomposed)) == expected
+    assert binding_intent_digest(decomposed, byte_cap=len(decomposed)) == (
+        literal_H(expected)
+    )
+    assert literal_H(expected) != literal_H(SPINE_BI)
+    a["run_id"] = "run-e\u0301"
+    payload_a = raw(a)
+    expected_a = SPINE_AW.replace(b"run-\xc3\xa9", b"run-e\xcc\x81")
+    assert canonical_activation(payload_a, byte_cap=len(payload_a)) == expected_a
+    assert activation_digest(payload_a, byte_cap=len(payload_a)) == (
+        literal_H(expected_a)
+    )
+
+
+@pytest.mark.parametrize(("group", "field"), [
+    (group, field) for group, fields in BI_SLOTS.items() for field in fields
+])
+def test_every_bi_nested_field_participates_in_hash(group: str, field: str) -> None:
+    _, b, _, _ = spine_data()
+    kind = BI_SLOTS[group][field]
+    value: object = {"D": "sha256:" + "f" * 64, "G": "f" * 40,
+                     "I": "changed-I", "R": "changed/repo", "E": 2,
+                     "O": "changed-owner"}[kind]
+    bi_group(b, group)[field] = value
+    payload = raw(b)
+    assert binding_intent_digest(payload, byte_cap=len(payload)) != literal_H(SPINE_BI)
+
+
+@pytest.mark.parametrize("field", (
+    "run_id", "runtime_core_digest", "binding_intent_digest", "launch_approval_digest",
+))
+def test_every_aw_variable_field_participates_in_hash(field: str) -> None:
+    _, _, _, a = spine_data()
+    a[field] = "changed-I" if field == "run_id" else "sha256:" + "f" * 64
+    payload = raw(a)
+    assert activation_digest(payload, byte_cap=len(payload)) != literal_H(SPINE_AW)
+
+
+@pytest.mark.parametrize("family", ["BI", "AW"])
+@pytest.mark.parametrize("payload", [b"null", b"[]", b"0", b'"string"'])
+def test_envelope_record_requires_object(family: str, payload: bytes) -> None:
+    reject_envelope_record(family, payload)
+
+
+@pytest.mark.parametrize(("family", "payload"), [
+    ("BI", SPINE_BI[:-1] + b',"runtime_core_digest":"' + fixture_D("f") + b'"}'),
+    ("BI", SPINE_BI.replace(b'"epic":1', b'"epic":1,"epic":2')),
+    ("BI", SPINE_BI.replace(b'"epic":1', b'"epic":1,"\\u0065pic":1')),
+    ("AW", SPINE_AW[:-1] + b',"run_id":"another"}'),
+    ("AW", SPINE_AW[:-1] + b',"run_\\u0069d":"run-\xc3\xa9"}'),
+])
+def test_envelope_duplicate_known_key_valid_final_shape(family: str,
+                                                       payload: bytes) -> None:
+    reject_envelope_record(family, payload)
+
+
+@pytest.mark.parametrize(("family", "other"), [
+    (family, other) for family in ("BI", "AW")
+    for other in ("LA", "IA", "HA", "RC", "BI", "AW") if family != other
+])
+def test_new_expected_family_slots_are_closed(family: str, other: str) -> None:
+    payload = {"LA": SPINE_LA, "IA": INSTALL_EXPECTED, "HA": HOST_EXPECTED,
+               "RC": SPINE_RC, "BI": SPINE_BI, "AW": SPINE_AW}[other]
+    reject_envelope_record(family, payload)
+
+
+@pytest.mark.parametrize(("group", "field"), [
+    ("engine", "manifest_digest"), ("installation", "installation_id"),
+    ("target", "epic"), ("authority", "owner_identity"),
+])
+def test_each_bi_group_rejects_duplicate_valid_known_key(
+    group: str, field: str,
+) -> None:
+    _, b, _, _ = spine_data()
+    original = raw(bi_group(b, group))
+    member = raw({field: bi_group(b, group)[field]})[1:-1]
+    duplicated = original[:-1] + b"," + member + b"}"
+    payload = raw(b).replace(original, duplicated, 1)
+    reject_envelope_record("BI", payload)
+
+
+def test_bi_runtime_core_pointer_participates_in_hash() -> None:
+    _, b, _, _ = spine_data()
+    b["runtime_core_digest"] = "sha256:" + "f" * 64
+    payload = raw(b)
+    assert binding_intent_digest(payload, byte_cap=len(payload)) != literal_H(SPINE_BI)
+
+
+@pytest.mark.parametrize("payload", [SPINE_BI, SPINE_AW])
+def test_existing_family_entries_do_not_accept_new_families(payload: bytes) -> None:
+    reject(payload)
+    reject_leaf("install", payload)
+    reject_leaf("host", payload)
+    reject_core(payload)
+
+
+@pytest.mark.parametrize("join", range(1, 13))
+def test_each_of_twelve_joins_fails_independently(join: int) -> None:
+    data = spine_data()
+    _, b, la, a = data
+    other = "sha256:" + "f" * 64
+    if join == 1:
+        b["runtime_core_digest"] = other
+    elif 2 <= join <= 8:
+        group, field = (
+            ("engine", "manifest_digest"), ("installation", "receipt_digest"),
+            ("installation", "host_admission_digest"), ("target", "profile_digest"),
+            ("authority", "mandate_record_digest"),
+            ("authority", "mandate_authority_digest"),
+            ("authority", "run_origin_digest"),
+        )[join - 2]
+        bi_group(b, group)[field] = other
+    elif join == 9:
+        la["binding_intent_digest"] = other
+    rebind_fixture(data, bind_la=join != 9)
+    if join >= 10:
+        a[("runtime_core_digest", "binding_intent_digest",
+           "launch_approval_digest")[join - 10]] = other
+    expected = [True] * 12
+    expected[join - 1] = False
+    assert fixture_join_oracles(data) == expected
+    with pytest.raises(CodecError):
+        check_spine(data)
+
+
+def test_same_named_full_MD_and_legacy_A_slots_are_not_swapped() -> None:
+    data = spine_data()
+    r, b, _, _ = data
+    authority = bi_group(b, "authority")
+    authority["mandate_record_digest"], authority["mandate_authority_digest"] = (
+        authority["mandate_authority_digest"], authority["mandate_record_digest"]
+    )
+    rebind_fixture(data)
+    with pytest.raises(CodecError):
+        check_spine(data)
+    r["mandate_record_digest"], r["mandate_authority_digest"] = (
+        r["mandate_authority_digest"], r["mandate_record_digest"]
+    )
+    b["runtime_core_digest"] = fixture_hash(r)
+    rebind_fixture(data)
+    check_spine(data)  # Pure consistency still cannot prove either typed source.
+
+
+def test_forged_revoked_expired_different_run_spine_is_not_authority() -> None:
+    data = spine_data()
+    _, _, la, a = data
+    la.update(approved_at=9, not_before=10, expires_at=0, revoked=True)
+    a["run_id"] = "different-from-intended-run"
+    rebind_fixture(data)
+    check_spine(data)
+    # No trusted expectedLA/owner/RO/source exists; successful None grants no effect.
+
+
+@pytest.mark.parametrize("slot", range(4))
+def test_pure_checker_requires_exact_family_in_each_slot(slot: int) -> None:
+    values = [SPINE_RC, SPINE_BI, SPINE_LA, SPINE_AW]
+    values[slot] = values[(slot + 1) % 4]
+    r, b, la, a = values
+    with pytest.raises(CodecError):
+        check_envelope_consistency(r, b, la, a, byte_cap=max(map(len, values)))
+
+
+def test_new_entries_and_checker_require_explicit_bytecap() -> None:
+    for family, payload in (("BI", SPINE_BI), ("AW", SPINE_AW)):
+        for operation in envelope_operations(family):
+            with pytest.raises(TypeError):
+                operation(payload)
+            with pytest.raises(CodecError):
+                operation(payload, byte_cap=False)
+            with pytest.raises(CodecError):
+                operation(payload, byte_cap=len(payload) - 1)
+    unsafe_check = cast(Callable[..., object], check_envelope_consistency)
+    with pytest.raises(TypeError):
+        unsafe_check(SPINE_RC, SPINE_BI, SPINE_LA, SPINE_AW)
+    with pytest.raises(CodecError):
+        unsafe_check(SPINE_RC, SPINE_BI, SPINE_LA, SPINE_AW, byte_cap=False)
+    with pytest.raises(CodecError):
+        unsafe_check(SPINE_RC, SPINE_BI, SPINE_LA, SPINE_AW,
+                     byte_cap=len(SPINE_AW) - 1)
