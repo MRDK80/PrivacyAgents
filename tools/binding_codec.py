@@ -1,7 +1,7 @@
-"""Repository-only structural approval codecs, never permission/lifecycle checks.
+"""Repository-only structural binding codecs, never permission/lifecycle checks.
 
 A returned record or digest does not authenticate its owner, resolve its source,
-validate a time window, or authorize any effect. Only the named LA/IA/HA1.0
+validate a time window, or authorize any effect. Only named LA/IA/HA/RC1.0
 entry paths are supported. No filesystem, clock or runtime consumer is involved.
 """
 
@@ -215,4 +215,60 @@ def host_admission_digest(payload: bytes, *, byte_cap: int) -> str:
     """Hash structural HA fields; this digest does not prove host capability."""
     return "sha256:" + hashlib.sha256(
         canonical_host_admission(payload, byte_cap=byte_cap)
+    ).hexdigest()
+
+
+_CORE_DIGEST_FIELDS = (
+    "run_origin_digest", "engine_manifest_digest", "installation_receipt_digest",
+    "host_admission_digest", "target_profile_digest", "mandate_record_digest",
+    "mandate_authority_digest", "runtime_adapter_digest", "approved_plans_digest",
+)
+_CORE_PROFILES = frozenset({
+    "planning", "wait", "quota", "continuation", "learning", "final_preparation",
+})
+_CORE_FIELDS = frozenset(_CORE_DIGEST_FIELDS) | {
+    "schema_id", "schema_version", "feature_profiles",
+}
+
+
+def _runtime_core_shape(value: object) -> dict[str, object]:
+    if type(value) is not dict:
+        raise CodecError()
+    record = cast(dict[str, object], value)
+    if record.keys() != _CORE_FIELDS:
+        raise CodecError()
+    if (
+        record["schema_id"] != "privacyagents.runtime-core"
+        or record["schema_version"] != "1.0"
+    ):
+        raise CodecError()
+    for field in _CORE_DIGEST_FIELDS:
+        digest = record[field]
+        if not isinstance(digest, str) or _DIGEST.fullmatch(digest) is None:
+            raise CodecError()
+    profiles = record["feature_profiles"]
+    if type(profiles) is not dict:
+        raise CodecError()
+    features = cast(dict[str, object], profiles)
+    if features.keys() != _CORE_PROFILES or any(
+        value is not None for value in features.values()
+    ):
+        raise CodecError()
+    return record
+
+
+def read_runtime_core(payload: bytes, *, byte_cap: int) -> dict[str, object]:
+    """Decode structural RC1.0 only; no pointed source or runtime is validated."""
+    return _runtime_core_shape(_strict_json(payload, byte_cap))
+
+
+def canonical_runtime_core(payload: bytes, *, byte_cap: int) -> bytes:
+    """Encode nine checked pointers and the mandatory six-null feature map."""
+    return _canonical_json(read_runtime_core(payload, byte_cap=byte_cap))
+
+
+def runtime_core_digest(payload: bytes, *, byte_cap: int) -> str:
+    """Hash structural RC fields; no source/authority/readiness proof is implied."""
+    return "sha256:" + hashlib.sha256(
+        canonical_runtime_core(payload, byte_cap=byte_cap)
     ).hexdigest()
