@@ -83,5 +83,30 @@
       "source": "https://github.com/MRDK80/privacy-gateway/blob/27c8d2b458712c44b54d5fedd2ca78c398b6246e/examples/agent-contracts/controller-fail.json",
       "scope": "untrusted synthetic test input/source; excluded from wheel/sdist; not approval/evidence"
     }
-  ]
+  ],
+  "repository_only_mandate_primitives": {
+    "path": "tools/mandate_validation.py",
+    "source": "https://github.com/MRDK80/privacy-gateway/blob/27c8d2b458712c44b54d5fedd2ca78c398b6246e/tools/agent_epic_handover.py",
+    "source_tree": "https://api.github.com/repos/MRDK80/privacy-gateway/git/trees/d4cd93b3cbb27723c7088ed21b60ca76f952316f",
+    "fragments": [
+      {
+        "name": "MandateContext",
+        "source_lines": "76-82"
+      },
+      {
+        "name": "mandate_lifecycle_code",
+        "source_lines": "85-168"
+      },
+      {
+        "name": "mandate_digest",
+        "source_lines": "179-190"
+      }
+    ],
+    "constants": {
+      "MANDATE_SCHEMA_VERSION": "2.0",
+      "PINNED_MANDATE_SCHEMA_VERSION": "3.0"
+    },
+    "license": "MIT; copyright notice and LICENSE retained",
+    "scope": "unchanged pure legacy projection/lifecycle fragments; repository-only, excluded from wheel/sdist; not full authentication, runtime authority or grant migration"
+  }
 }
